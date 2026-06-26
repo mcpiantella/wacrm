@@ -5,8 +5,8 @@ import Anthropic from '@anthropic-ai/sdk'
  * Provider-agnostic chat completion with an OpenAI → Anthropic fallback.
  *
  * Used by the SDR (qualifier) and the campaign generator. OpenAI is the
- * primary (the account has free credits and uses `gpt-5-mini`); Anthropic
- * is the fallback when OpenAI has no key or errors at call time.
+ * primary (default model `gpt-5.4-mini`, overridable via `OPENAI_MODEL`);
+ * Anthropic is the fallback when OpenAI has no key or errors at call time.
  *
  * Keys come from env (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`) — never
  * hardcoded. If neither is configured, callers get a clear error.
@@ -43,7 +43,7 @@ export interface ChatCompleteResult {
   model: string
 }
 
-const DEFAULT_OPENAI_MODEL = process.env.OPENAI_MODEL ?? 'gpt-5-mini'
+const DEFAULT_OPENAI_MODEL = process.env.OPENAI_MODEL ?? 'gpt-5.4-mini'
 const DEFAULT_ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL ?? 'claude-sonnet-4-6'
 
 async function openaiComplete(input: ChatCompleteInput): Promise<ChatCompleteResult> {

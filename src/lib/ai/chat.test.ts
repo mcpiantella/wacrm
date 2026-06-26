@@ -39,7 +39,7 @@ describe('chatComplete', () => {
 
     const res = await chatComplete({ system: 's', messages: [{ role: 'user', content: 'oi' }] })
 
-    expect(res).toEqual({ text: 'hi from openai', provider: 'openai', model: 'gpt-5-mini' })
+    expect(res).toEqual({ text: 'hi from openai', provider: 'openai', model: 'gpt-5.4-mini' })
     expect(anthropicCreate).not.toHaveBeenCalled()
   })
 

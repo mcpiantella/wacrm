@@ -47,7 +47,7 @@ differs (`npm run worker`).
    | `REDIS_URL` | `redis://…:6379` | the queue backend |
    | `OPENAI_API_KEY` | `sk-…` | primary LLM + transcription |
    | `ANTHROPIC_API_KEY` | `sk-ant-…` | optional fallback |
-   | `OPENAI_MODEL` | `gpt-5-mini` | optional (default) |
+   | `OPENAI_MODEL` | `gpt-5.4-mini` | optional (default) |
    | `TRANSCRIBER` / `TRANSCRIBE_MODEL` | — | optional (defaults: openai / gpt-4o-mini-transcribe) |
    | `SDR_WORKER_CONCURRENCY` | `5` | optional |
 
