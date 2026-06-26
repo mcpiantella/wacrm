@@ -14,7 +14,12 @@
 # OPENAI_API_KEY, ...) are read from the container ENV at RUN time and must be
 # set on the Easypanel worker service — never baked into the image.
 # ---------------------------------------------------------------------------
-FROM node:20-slim AS base
+# Node 22 (not 20): supabase-js's Realtime client needs a native global
+# `WebSocket`, which only ships unflagged from Node 22. The web app dodges
+# this via Next's runtime polyfill, but the worker runs raw via `tsx`, so it
+# must be on a Node that has WebSocket built in — otherwise it crashes at
+# boot ("Node.js 20 detected without native WebSocket support").
+FROM node:22-slim AS base
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 
