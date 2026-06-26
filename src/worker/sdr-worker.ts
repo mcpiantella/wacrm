@@ -9,6 +9,9 @@
  * role throughout — there is no user session here. MUST share the web
  * app's ENCRYPTION_KEY so it can decrypt channel credentials.
  */
+// MUST be first: installs a global WebSocket (for supabase-js Realtime) on
+// Node < 22, before any Supabase client is constructed below.
+import './ws-polyfill'
 import { Worker } from 'bullmq'
 import { getRedisConnection } from '@/lib/queue/connection'
 import { SDR_QUEUE_NAME, type SdrJobData } from '@/lib/queue/sdr-queue'
