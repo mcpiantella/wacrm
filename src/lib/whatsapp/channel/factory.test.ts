@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { encrypt } from '@/lib/whatsapp/encryption'
 import { createChannel } from './factory'
 import { CloudApiChannel } from './cloud-api-channel'
+import { EvolutionChannel } from './evolution-channel'
 import type { ChannelRow } from './types'
 
 vi.mock('@/lib/whatsapp/meta-api', () => ({
@@ -32,9 +33,17 @@ describe('createChannel', () => {
     expect(ch.provider).toBe('cloud')
   })
 
-  it('throws a clear "not implemented" error for provider="evolution"', () => {
-    expect(() => createChannel(row({ provider: 'evolution' }))).toThrow(
-      /Evolution channels are not implemented yet/,
+  it('builds an EvolutionChannel for provider="evolution"', () => {
+    const ch = createChannel(
+      row({
+        provider: 'evolution',
+        identifier: 'imobquest',
+        config: { base_url: 'https://evo.example.com' },
+        credentials: { api_key: encrypt('evo-key') },
+      }),
     )
+    expect(ch).toBeInstanceOf(EvolutionChannel)
+    expect(ch.provider).toBe('evolution')
+    expect(ch.supportsTemplates).toBe(false)
   })
 })

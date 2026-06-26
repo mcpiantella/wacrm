@@ -1,5 +1,6 @@
 import type { ChannelRow, WhatsAppChannel } from './types'
 import { CloudApiChannel } from './cloud-api-channel'
+import { EvolutionChannel } from './evolution-channel'
 
 /**
  * Build the right `WhatsAppChannel` for a `channels` row.
@@ -14,9 +15,7 @@ export function createChannel(row: ChannelRow): WhatsAppChannel {
     case 'cloud':
       return new CloudApiChannel(row)
     case 'evolution':
-      throw new Error(
-        `Evolution channels are not implemented yet (S6). Channel ${row.id}.`,
-      )
+      return new EvolutionChannel(row)
     default: {
       // Exhaustiveness guard — a new provider in the DB enum without a
       // matching case lands here loudly instead of being ignored.
