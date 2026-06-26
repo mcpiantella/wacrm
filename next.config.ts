@@ -61,6 +61,11 @@ const SECURITY_HEADERS = [
 ] as const;
 
 const nextConfig: NextConfig = {
+  // Emit a self-contained server bundle (.next/standalone) so the Docker
+  // image can run `node server.js` without shipping the full node_modules
+  // tree. Required by the multi-stage Dockerfile used for deploy.
+  output: "standalone",
+
   /**
    * Cache-Control policy.
    *
