@@ -1,0 +1,33 @@
+# syntax=docker/dockerfile:1
+# ---------------------------------------------------------------------------
+# SDR worker image (SDR-7).
+#
+# The web Dockerfile produces a Next.js *standalone* image that deliberately
+# drops `src/` and dev tooling — so it CANNOT run the worker, which executes
+# `tsx src/worker/sdr-worker.ts` against the TypeScript source at runtime.
+#
+# This image keeps the full source + node_modules (incl. the `tsx` dev dep)
+# so the worker runs directly from TS. Same repo, different Dockerfile: point
+# the Easypanel worker service at `Dockerfile.worker`.
+#
+# All secrets (SUPABASE_SERVICE_ROLE_KEY, ENCRYPTION_KEY, REDIS_URL,
+# OPENAI_API_KEY, ...) are read from the container ENV at RUN time and must be
+# set on the Easypanel worker service — never baked into the image.
+# ---------------------------------------------------------------------------
+FROM node:20-slim AS base
+WORKDIR /app
+ENV NEXT_TELEMETRY_DISABLED=1
+
+# Install ALL deps (including devDependencies like `tsx`). Do not set
+# NODE_ENV=production here or npm would skip the dev deps the worker needs.
+FROM base AS deps
+COPY package.json package-lock.json ./
+RUN npm ci
+
+# Runtime: full source + deps, run the worker straight from TypeScript.
+FROM base AS worker
+ENV NODE_ENV=production
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+USER node
+CMD ["npm", "run", "worker"]

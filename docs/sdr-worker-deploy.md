@@ -27,12 +27,16 @@ differs (`npm run worker`).
 
 ## Steps (Easypanel)
 
-1. **New service** in the same project (`crm_zenith`). Source = the **same
-   repo/branch** as the web app (`mcpiantella/wacrm`, `main`).
-2. **Build**: same Dockerfile as the web app (no change needed).
-3. **Start command**: override to `npm run worker`.
-   - (The Dockerfile's default CMD starts the web server; the worker
-     service overrides it to run `tsx src/worker/sdr-worker.ts`.)
+1. **New service** (type: App) in the same project as the web app. Source =
+   the **same repo/branch** as the web app (`mcpiantella/wacrm`, `main`).
+   (Easypanel's shared network lets it reach Redis in any project via the
+   `project_service` hostname, so the project choice is about tidiness only.)
+2. **Build**: set the **Dockerfile path to `Dockerfile.worker`** (NOT the web
+   `Dockerfile`).
+   - ⚠️ The web `Dockerfile` produces a Next.js *standalone* image that drops
+     `src/` and dev tooling — it **cannot** run the worker. `Dockerfile.worker`
+     keeps the full source + deps (incl. `tsx`) and its `CMD` is already
+     `npm run worker`. No start-command override needed.
 4. **Environment variables** — set these on the worker service:
 
    | Var | Value | Notes |
