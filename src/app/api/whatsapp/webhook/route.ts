@@ -4,10 +4,13 @@ import { decrypt } from '@/lib/whatsapp/encryption'
 import { getCloudConfigByPhoneNumberId } from '@/lib/whatsapp/channel/resolve'
 import { getMediaUrl, downloadMedia } from '@/lib/whatsapp/meta-api'
 import { normalizePhone } from '@/lib/whatsapp/phone-utils'
-import { findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe'
 import { verifyMetaWebhookSignature } from '@/lib/whatsapp/webhook-signature'
-import { runAutomationsForTrigger } from '@/lib/automations/engine'
-import { dispatchInboundToFlows } from '@/lib/flows/engine'
+import {
+  processInboundMessage,
+  findOrCreateContact,
+  findOrCreateConversation,
+  type InboundContentType,
+} from '@/lib/whatsapp/inbound/process-inbound'
 import {
   handleTemplateWebhookChange,
   isTemplateWebhookField,
@@ -267,6 +270,8 @@ async function processWebhook(body: { entry?: WhatsAppWebhookEntry[] }) {
           // inserts that need it for NOT NULL FK compliance. Always
           // the admin who saved the WhatsApp config.
           config.user_id,
+          // The channel this inbound arrived on (stamped on new convos).
+          config.id,
           decryptedAccessToken
         )
       }
@@ -371,45 +376,6 @@ async function handleStatusUpdate(status: {
 }
 
 /**
- * If an inbound message's sender is on a still-unreplied
- * broadcast_recipients row, flip it to `replied` so the reply count
- * advances on the parent broadcast.
- *
- * Runs on a best-effort basis — failures here must not break the
- * main inbound-message flow, so errors are swallowed with a log.
- */
-async function flagBroadcastReplyIfAny(accountId: string, contactId: string) {
-  try {
-    // Most recent outbound broadcast in this account that hasn't
-    // been replied to yet. Account-scoped so a shared inbox reply
-    // marks the broadcast as replied regardless of which teammate
-    // sent it.
-    const { data: recs, error } = await supabaseAdmin()
-      .from('broadcast_recipients')
-      .select('id, status, broadcast_id, broadcasts!inner(account_id)')
-      .eq('contact_id', contactId)
-      .eq('broadcasts.account_id', accountId)
-      .in('status', ['sent', 'delivered', 'read'])
-      .order('created_at', { ascending: false })
-      .limit(1)
-
-    if (error || !recs || recs.length === 0) return
-
-    const row = recs[0]
-    const { error: updErr } = await supabaseAdmin()
-      .from('broadcast_recipients')
-      .update({ status: 'replied', replied_at: new Date().toISOString() })
-      .eq('id', row.id)
-
-    if (updErr) {
-      console.error('Error marking broadcast recipient replied:', updErr)
-    }
-  } catch (err) {
-    console.error('flagBroadcastReplyIfAny failed:', err)
-  }
-}
-
-/**
  * Resolve a Meta-side message_id into the matching internal UUID, scoped
  * to one conversation. Returns null when we never received the parent
  * (e.g. a swipe-reply to a message older than this CRM install).
@@ -493,218 +459,99 @@ async function handleReaction(
 async function processMessage(
   message: WhatsAppMessage,
   contact: { profile: { name: string }; wa_id: string },
-  // Tenancy. Resolved from the matched whatsapp_config row; every
-  // contact / conversation / message row created downstream is
-  // stamped with this so any member of the account can see it.
+  // Tenancy. Resolved from the matched channel; every row created
+  // downstream is stamped with this.
   accountId: string,
-  // Sender-of-record for inserts that need a NOT NULL user_id FK
-  // (contacts, conversations). Always the admin who saved the
-  // WhatsApp config; the choice is arbitrary post-017 but stable.
+  // Sender-of-record for NOT NULL user_id FKs. The channel owner.
   configOwnerUserId: string,
+  // The channel this inbound arrived on.
+  channelId: string,
   accessToken: string
 ) {
-  const senderPhone = normalizePhone(message.from)
-  const contactName = contact.profile.name
-
-  // Find or create contact
-  const contactOutcome = await findOrCreateContact(
-    accountId,
-    configOwnerUserId,
-    senderPhone,
-    contactName
-  )
-  if (!contactOutcome) return
-  const contactRecord = contactOutcome.contact
-
-  // Find or create conversation
-  const conversation = await findOrCreateConversation(
-    accountId,
-    configOwnerUserId,
-    contactRecord.id
-  )
-  if (!conversation) return
-
-  // Reactions short-circuit here — they aren't messages. We never insert
-  // into `messages`, never bump unread_count, never update last_message_text.
-  // Done before parseMessageContent so the media-URL fetch is skipped.
+  // Reactions short-circuit — they aren't messages. Resolve contact +
+  // conversation (shared helpers) just enough to record the reaction,
+  // then return before any parse/insert.
   if (message.type === 'reaction') {
-    await handleReaction(message, conversation.id, contactRecord.id)
+    const contactOutcome = await findOrCreateContact(
+      accountId,
+      configOwnerUserId,
+      normalizePhone(message.from),
+      contact.profile.name,
+    )
+    if (!contactOutcome) return
+    const conversation = await findOrCreateConversation(
+      accountId,
+      configOwnerUserId,
+      contactOutcome.contact.id,
+      channelId,
+    )
+    if (!conversation) return
+    await handleReaction(message, conversation.id, contactOutcome.contact.id)
     return
   }
 
-  // Parse message content based on type
+  // Parse Meta-specific content (downloads media via the Graph token).
   const { contentText, mediaUrl, mediaType, interactiveReplyId } =
     await parseMessageContent(message, accessToken)
+  // `mediaType` only drives the proxy URL inside parseMessageContent;
+  // the messages schema has no media_type column.
+  void mediaType
 
   // Resolve swipe-reply context if present. A missing parent is fine —
-  // we just store NULL and the UI renders the message without a quote.
+  // we store NULL and the UI renders the message without a quote. This
+  // needs the conversation, so resolve it here (Meta-specific lookup).
   let replyToInternalId: string | null = null
   if (message.context?.id) {
-    replyToInternalId = await lookupInternalIdByMetaId(
-      message.context.id,
-      conversation.id
+    const conv = await findOrCreateConversation(
+      accountId,
+      configOwnerUserId,
+      (await findOrCreateContact(
+        accountId,
+        configOwnerUserId,
+        normalizePhone(message.from),
+        contact.profile.name,
+      ))?.contact.id ?? '',
+      channelId,
     )
-    if (!replyToInternalId) {
-      console.warn(
-        '[webhook] reply context parent not found:',
-        message.context.id
+    if (conv) {
+      replyToInternalId = await lookupInternalIdByMetaId(
+        message.context.id,
+        conv.id,
       )
+      if (!replyToInternalId) {
+        console.warn('[webhook] reply context parent not found:', message.context.id)
+      }
     }
   }
 
-  // Insert message — field names MUST match the messages table schema
-  // (see supabase/migrations/001_initial_schema.sql):
-  //   conversation_id, sender_type, content_type, content_text,
-  //   media_url, template_name, message_id, status, created_at
-  // `mediaType` is intentionally unused — the schema has no media_type
-  // column; the MIME type is only used to construct the proxy URL during
-  // parseMessageContent. Silence the unused-var warning:
-  void mediaType
+  // Map Meta's type onto an allowed content_type, then hand the
+  // normalised message to the shared provider-agnostic pipeline.
+  const contentType: InboundContentType =
+    message.type === 'sticker'
+      ? 'image'
+      : (
+            [
+              'text', 'image', 'document', 'audio', 'video',
+              'location', 'template', 'interactive',
+            ] as const
+          ).includes(message.type as InboundContentType)
+        ? (message.type as InboundContentType)
+        : 'text'
 
-  // The messages.content_type CHECK constraint (widened in migration 010
-  // to add 'interactive' for button/list taps) allows:
-  //   text, image, document, audio, video, location, template, interactive
-  // Map incoming WhatsApp types that aren't in that list to the closest
-  // allowed value so the INSERT doesn't fail with a constraint error.
-  const ALLOWED_CONTENT_TYPES = new Set([
-    'text', 'image', 'document', 'audio', 'video',
-    'location', 'template', 'interactive',
-  ])
-  const contentType = ALLOWED_CONTENT_TYPES.has(message.type)
-    ? message.type
-    : message.type === 'sticker'
-      ? 'image'   // stickers are images
-      : 'text'    // reaction, unknown → text fallback
-
-  // Determine whether this is the contact's very first inbound message
-  // BEFORE we insert, so the count is accurate. Covers the case where
-  // the contact row already exists (manual add / CSV import) but they've
-  // never messaged us before — which new_contact_created wouldn't catch.
-  const { count: priorCustomerMsgCount } = await supabaseAdmin()
-    .from('messages')
-    .select('id', { count: 'exact', head: true })
-    .eq('conversation_id', conversation.id)
-    .eq('sender_type', 'customer')
-  const isFirstInboundMessage = (priorCustomerMsgCount ?? 0) === 0
-
-  const { error: msgError } = await supabaseAdmin().from('messages').insert({
-    conversation_id: conversation.id,
-    sender_type: 'customer',
-    content_type: contentType,
-    content_text: contentText,
-    media_url: mediaUrl,
-    message_id: message.id,
-    status: 'delivered',
-    created_at: new Date(parseInt(message.timestamp) * 1000).toISOString(),
-    reply_to_message_id: replyToInternalId,
-    // Only populated for content_type='interactive'. Migration 010 added
-    // the column; null for every other content_type so existing inserts
-    // behave identically.
-    interactive_reply_id: interactiveReplyId,
-  })
-
-  if (msgError) {
-    console.error('Error inserting message:', msgError)
-    return
-  }
-
-  // Update conversation
-  const { error: convError } = await supabaseAdmin()
-    .from('conversations')
-    .update({
-      last_message_text: contentText || `[${message.type}]`,
-      last_message_at: new Date().toISOString(),
-      unread_count: (conversation.unread_count || 0) + 1,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', conversation.id)
-
-  if (convError) {
-    console.error('Error updating conversation:', convError)
-  }
-
-  // If this contact was a recent broadcast recipient, flag the reply
-  // so the broadcast's `replied_count` advances (via the aggregate
-  // trigger installed in migration 003).
-  await flagBroadcastReplyIfAny(accountId, contactRecord.id)
-
-  // ============================================================
-  // Flow runner dispatch.
-  //
-  // If the runner consumes the message (it either advanced an active
-  // run or started a new one), we suppress the `new_message_received`
-  // + `keyword_match` automation triggers for this inbound. Customer
-  // is navigating the bot menu, not sending a fresh trigger word
-  // that should fork into automations.
-  //
-  // The relationship-level triggers (`new_contact_created`,
-  // `first_inbound_message`) still fire even when consumed — those
-  // are about WHO is messaging, not what they said.
-  //
-  // Awaited (not fire-and-forget) because we need the `consumed`
-  // result before deciding whether to dispatch automations. The
-  // runner has its own try/catch and never throws. Accounts with
-  // no active flows take the runner's early-exit "no_match" path
-  // basically for free (one indexed SELECT for the active run).
-  // ============================================================
-  const flowResult = await dispatchInboundToFlows({
+  await processInboundMessage({
     accountId,
-    userId: configOwnerUserId,
-    contactId: contactRecord.id,
-    conversationId: conversation.id,
-    message:
-      interactiveReplyId
-        ? {
-            kind: 'interactive_reply',
-            reply_id: interactiveReplyId,
-            reply_title: contentText ?? '',
-            meta_message_id: message.id,
-          }
-        : {
-            kind: 'text',
-            text: contentText ?? message.text?.body ?? '',
-            meta_message_id: message.id,
-          },
-    isFirstInboundMessage,
+    ownerUserId: configOwnerUserId,
+    channelId,
+    senderPhone: message.from,
+    senderName: contact.profile.name,
+    providerMessageId: message.id,
+    timestamp: new Date(parseInt(message.timestamp) * 1000),
+    contentType,
+    contentText: contentText ?? message.text?.body ?? null,
+    mediaUrl,
+    interactiveReplyId,
+    replyToInternalId,
   })
-  const flowConsumed = flowResult.consumed
-
-  // Fire any automations that react to this webhook event. All dispatches
-  // run here (not earlier) so the contact, conversation, and inbound
-  // message all exist before any step — including send_message — runs.
-  // Fire-and-forget: a slow or failing automation must not block the
-  // webhook's 200 OK response to Meta.
-  const inboundText = contentText ?? message.text?.body ?? ''
-  const automationTriggers: (
-    | 'new_contact_created'
-    | 'first_inbound_message'
-    | 'new_message_received'
-    | 'keyword_match'
-  )[] = []
-  // Content-level triggers are suppressed when a flow consumed the
-  // message — see the comment block above.
-  if (!flowConsumed) {
-    automationTriggers.push('new_message_received', 'keyword_match')
-  }
-  // new_contact_created fires only when the webhook just auto-created the
-  // contact row. first_inbound_message fires whenever this is the contact's
-  // first-ever customer-sent message — a superset that also catches
-  // manually-imported contacts sending for the first time. We dispatch both
-  // so users can pick whichever semantic they want; an automation that
-  // listens to only one trigger runs only when that trigger matches.
-  if (contactOutcome.wasCreated) automationTriggers.unshift('new_contact_created')
-  if (isFirstInboundMessage) automationTriggers.unshift('first_inbound_message')
-  for (const triggerType of automationTriggers) {
-    runAutomationsForTrigger({
-      accountId,
-      triggerType,
-      contactId: contactRecord.id,
-      context: {
-        message_text: inboundText,
-        conversation_id: conversation.id,
-      },
-    }).catch((err) => console.error('[automations] dispatch failed:', err))
-  }
 }
 
 async function parseMessageContent(
@@ -852,109 +699,3 @@ async function parseMessageContent(
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type ContactRow = any
-
-interface ContactOutcome {
-  contact: ContactRow
-  /** True when this call created the row; drives new_contact_created
-   *  automation dispatch in processMessage. */
-  wasCreated: boolean
-}
-
-async function findOrCreateContact(
-  accountId: string,
-  configOwnerUserId: string,
-  phone: string,
-  name: string
-): Promise<ContactOutcome | null> {
-  // Find an existing contact for this account by phone. The shared
-  // helper pre-filters in SQL by the last-8-digit suffix (so we don't
-  // pull every contact on every inbound message) then applies the
-  // strict `phonesMatch` in JS on the small candidate set. The same
-  // helper backs the manual contact form and CSV import, so all three
-  // paths agree on what "same number" means (issue #212).
-  const existingContact = await findExistingContact(
-    supabaseAdmin(),
-    accountId,
-    phone,
-  )
-
-  if (existingContact) {
-    // Update name if it changed
-    if (name && name !== existingContact.name) {
-      await supabaseAdmin()
-        .from('contacts')
-        .update({ name, updated_at: new Date().toISOString() })
-        .eq('id', existingContact.id)
-    }
-    return { contact: existingContact, wasCreated: false }
-  }
-
-  // Create new contact. account_id is the tenancy column;
-  // user_id is the NOT NULL FK audit column (no inbound message
-  // has a single "user who created" it — we attribute to the
-  // WhatsApp config owner as a stable default).
-  const { data: newContact, error: createError } = await supabaseAdmin()
-    .from('contacts')
-    .insert({
-      account_id: accountId,
-      user_id: configOwnerUserId,
-      phone,
-      name: name || phone,
-    })
-    .select()
-    .single()
-
-  if (createError) {
-    // Lost a race: a concurrent inbound delivery (or another path)
-    // created this contact between our lookup and insert, and the
-    // unique index (migration 022) rejected the duplicate. Re-resolve
-    // the existing row instead of dropping the message.
-    if (isUniqueViolation(createError)) {
-      const raced = await findExistingContact(supabaseAdmin(), accountId, phone)
-      if (raced) return { contact: raced, wasCreated: false }
-    }
-    console.error('Error creating contact:', createError)
-    return null
-  }
-
-  return { contact: newContact, wasCreated: true }
-}
-
-async function findOrCreateConversation(
-  accountId: string,
-  configOwnerUserId: string,
-  contactId: string,
-) {
-  // Look for existing conversation in this account
-  const { data: existing, error: findError } = await supabaseAdmin()
-    .from('conversations')
-    .select('*')
-    .eq('account_id', accountId)
-    .eq('contact_id', contactId)
-    .single()
-
-  if (!findError && existing) {
-    return existing
-  }
-
-  // Create new conversation. Same tenancy + audit split as
-  // findOrCreateContact above.
-  const { data: newConv, error: createError } = await supabaseAdmin()
-    .from('conversations')
-    .insert({
-      account_id: accountId,
-      user_id: configOwnerUserId,
-      contact_id: contactId,
-    })
-    .select()
-    .single()
-
-  if (createError) {
-    console.error('Error creating conversation:', createError)
-    return null
-  }
-
-  return newConv
-}
