@@ -42,9 +42,31 @@ async function handleJob(conversationId: string): Promise<void> {
     console.warn('[sdr-worker] context not found for', conversationId)
     return
   }
-  const decision = await decideFromContext(ctx, sdrDeps)
-  await executeDecision(execDeps, decision, ctx)
-  console.log(`[sdr-worker] ${conversationId} → ${decision.action} (${decision.reason})`)
+  try {
+    const decision = await decideFromContext(ctx, sdrDeps)
+    await executeDecision(execDeps, decision, ctx)
+    console.log(`[sdr-worker] ${conversationId} → ${decision.action} (${decision.reason})`)
+  } catch (err) {
+    // The decide phase (LLM / transcription) threw — executeDecision never
+    // ran, so nothing was logged. Persist an 'error' run so the failure is
+    // visible in the DB (sdr_runs), not just the worker stdout.
+    const message = err instanceof Error ? err.message : String(err)
+    console.error(`[sdr-worker] ${conversationId} decide failed:`, message)
+    try {
+      await supabaseAdmin()
+        .from('sdr_runs')
+        .insert({
+          account_id: ctx.conversation.account_id,
+          conversation_id: ctx.conversation.id,
+          broadcast_id: ctx.conversation.broadcast_id,
+          inbound_message_ids: [],
+          action: 'error',
+          error: message,
+        })
+    } catch (e) {
+      console.error('[sdr-worker] error-run insert failed:', e)
+    }
+  }
 }
 
 const worker = new Worker<SdrJobData>(
