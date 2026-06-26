@@ -1,0 +1,211 @@
+'use client';
+
+// ============================================================
+// SdrConfigCard — per-campaign SDR (AI qualifier) configuration.
+// Lives on the broadcast detail page. Members see it read-only;
+// admins+ edit (gated by <RequireRole> + the admin-only PUT route).
+// ============================================================
+
+import { useCallback, useEffect, useState } from 'react';
+import { toast } from 'sonner';
+import { Bot, Loader2 } from 'lucide-react';
+
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
+import { Textarea } from '@/components/ui/textarea';
+import { RequireRole } from '@/components/auth/require-role';
+
+interface SdrConfig {
+  enabled: boolean;
+  system_prompt: string | null;
+  qualification_criteria: string[];
+  model: string | null;
+  handoff_keywords: string[];
+  max_turns: number;
+  debounce_seconds: number;
+}
+
+const EMPTY: SdrConfig = {
+  enabled: false,
+  system_prompt: '',
+  qualification_criteria: [],
+  model: null,
+  handoff_keywords: [],
+  max_turns: 20,
+  debounce_seconds: 12,
+};
+
+export function SdrConfigCard({ broadcastId }: { broadcastId: string }) {
+  const [config, setConfig] = useState<SdrConfig>(EMPTY);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/sdr/config?broadcast_id=${broadcastId}`, {
+        cache: 'no-store',
+      });
+      if (res.ok) {
+        const { config: c } = (await res.json()) as { config: SdrConfig | null };
+        if (c) setConfig({ ...EMPTY, ...c, system_prompt: c.system_prompt ?? '' });
+      }
+    } catch (err) {
+      console.error('[SdrConfigCard] load', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [broadcastId]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function save() {
+    setSaving(true);
+    try {
+      const res = await fetch('/api/sdr/config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ broadcast_id: broadcastId, ...config }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(payload.error || 'Failed to save SDR config');
+        return;
+      }
+      toast.success('SDR configuration saved');
+    } catch (err) {
+      console.error('[SdrConfigCard] save', err);
+      toast.error('Could not reach the server');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <Card>
+        <CardContent className="flex items-center justify-center py-8">
+          <Loader2 className="text-primary size-5 animate-spin" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <CardContent className="space-y-4 p-5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Bot className="text-primary size-5" />
+            <h3 className="text-foreground text-sm font-semibold">AI SDR (qualifier)</h3>
+          </div>
+          <div className="flex items-center gap-2">
+            <Label htmlFor="sdr-enabled" className="text-muted-foreground text-xs">
+              {config.enabled ? 'On' : 'Off'}
+            </Label>
+            <Switch
+              id="sdr-enabled"
+              checked={config.enabled}
+              onCheckedChange={(v) => setConfig((c) => ({ ...c, enabled: v }))}
+            />
+          </div>
+        </div>
+        <p className="text-muted-foreground text-xs">
+          When enabled, replies to this campaign are answered by the AI SDR until
+          a handoff. Activate it per conversation in the inbox.
+        </p>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="sdr-prompt">System prompt</Label>
+          <Textarea
+            id="sdr-prompt"
+            rows={5}
+            placeholder="Você é um SDR de… Seu objetivo é qualificar o lead perguntando…"
+            value={config.system_prompt ?? ''}
+            onChange={(e) => setConfig((c) => ({ ...c, system_prompt: e.target.value }))}
+          />
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="sdr-criteria">Qualification criteria (one per line)</Label>
+          <Textarea
+            id="sdr-criteria"
+            rows={3}
+            placeholder={'Tem orçamento definido\nÉ o decisor\nQuer comprar em até 30 dias'}
+            value={config.qualification_criteria.join('\n')}
+            onChange={(e) =>
+              setConfig((c) => ({
+                ...c,
+                qualification_criteria: e.target.value
+                  .split('\n')
+                  .map((s) => s.trim())
+                  .filter(Boolean),
+              }))
+            }
+          />
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="sdr-keywords">Handoff keywords (comma-separated)</Label>
+            <Input
+              id="sdr-keywords"
+              placeholder="falar com humano, atendente"
+              value={config.handoff_keywords.join(', ')}
+              onChange={(e) =>
+                setConfig((c) => ({
+                  ...c,
+                  handoff_keywords: e.target.value
+                    .split(',')
+                    .map((s) => s.trim())
+                    .filter(Boolean),
+                }))
+              }
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="sdr-debounce">Debounce (s)</Label>
+              <Input
+                id="sdr-debounce"
+                type="number"
+                min={5}
+                max={60}
+                value={config.debounce_seconds}
+                onChange={(e) =>
+                  setConfig((c) => ({ ...c, debounce_seconds: Number(e.target.value) }))
+                }
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="sdr-turns">Max turns</Label>
+              <Input
+                id="sdr-turns"
+                type="number"
+                min={1}
+                max={200}
+                value={config.max_turns}
+                onChange={(e) =>
+                  setConfig((c) => ({ ...c, max_turns: Number(e.target.value) }))
+                }
+              />
+            </div>
+          </div>
+        </div>
+
+        <RequireRole min="admin">
+          <div className="flex justify-end">
+            <Button onClick={save} disabled={saving}>
+              {saving && <Loader2 className="size-4 animate-spin" />}
+              Save SDR config
+            </Button>
+          </div>
+        </RequireRole>
+      </CardContent>
+    </Card>
+  );
+}
