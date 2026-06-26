@@ -18,7 +18,7 @@ describe('enqueueSdr', () => {
     expect(q.add).toHaveBeenCalledWith(
       'qualify',
       { conversationId: 'conv-1', accountId: 'acc-1' },
-      expect.objectContaining({ jobId: 'sdr:conv-1', delay: 12_000, removeOnComplete: true }),
+      expect.objectContaining({ jobId: 'sdr-conv-1', delay: 12_000, removeOnComplete: true }),
     )
   })
 
@@ -33,7 +33,7 @@ describe('enqueueSdr', () => {
     expect(q.add).toHaveBeenCalledWith(
       'qualify',
       expect.any(Object),
-      expect.objectContaining({ jobId: 'sdr:conv-1', delay: 15_000 }),
+      expect.objectContaining({ jobId: 'sdr-conv-1', delay: 15_000 }),
     )
   })
 
@@ -59,7 +59,7 @@ describe('enqueueSdr', () => {
 
 describe('sdrJobId / constants', () => {
   it('derives a stable per-conversation id', () => {
-    expect(sdrJobId('abc')).toBe('sdr:abc')
+    expect(sdrJobId('abc')).toBe('sdr-abc')
   })
   it('exposes the queue name', () => {
     expect(SDR_QUEUE_NAME).toBe('sdr')

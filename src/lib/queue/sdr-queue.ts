@@ -20,16 +20,23 @@ export function getSdrQueue(): Queue<SdrJobData> {
   return queue
 }
 
-/** Stable per-conversation job id — the basis of the debounce. */
+/**
+ * Stable per-conversation job id — the basis of the debounce.
+ *
+ * Uses `-` (not `:`) as the separator: BullMQ reserves `:` for its internal
+ * Redis key structure and rejects custom job ids that contain one
+ * ("Custom Id cannot contain :"). Conversation ids are UUIDs (no colons),
+ * so `sdr-<uuid>` is always valid.
+ */
 export function sdrJobId(conversationId: string): string {
-  return `sdr:${conversationId}`
+  return `sdr-${conversationId}`
 }
 
 /**
  * Enqueue — or refresh — a debounced SDR job for a conversation.
  *
  * Rapid-fire inbound messages must NOT each trigger a reply. We key the
- * job by conversation (`sdr:<id>`) and, on every new message, remove any
+ * job by conversation (`sdr-<id>`) and, on every new message, remove any
  * pending delayed job and re-add with `delay = debounceSeconds`. The
  * timer resets, so the SDR fires once after the lead goes quiet and
  * reads the whole batch from history.
