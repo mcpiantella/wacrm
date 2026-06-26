@@ -117,6 +117,42 @@ export async function getCloudConfigByPhoneNumberId(
   return { data: flattenCloudChannel(data), error: null }
 }
 
+/** Minimal routing info for an inbound webhook: which channel + who owns it. */
+export interface ChannelRouting {
+  id: string
+  account_id: string
+  user_id: string | null
+}
+
+/**
+ * Resolve the channel that owns `(provider, identifier)` for inbound
+ * routing. `UNIQUE(provider, identifier)` guarantees at most one. Used
+ * by the Evolution webhook (identifier = instance) and reusable for any
+ * provider that routes by its own identifier.
+ */
+export async function getChannelRouting(
+  supabase: AnyClient,
+  provider: 'cloud' | 'evolution',
+  identifier: string,
+): Promise<{ data: ChannelRouting | null; error: unknown }> {
+  const { data, error } = await supabase
+    .from('channels')
+    .select('id, account_id, user_id')
+    .eq('provider', provider)
+    .eq('identifier', identifier)
+    .maybeSingle()
+  if (error) return { data: null, error }
+  if (!data) return { data: null, error: null }
+  return {
+    data: {
+      id: data.id as string,
+      account_id: data.account_id as string,
+      user_id: (data.user_id as string | null) ?? null,
+    },
+    error: null,
+  }
+}
+
 /** Fields the config write path persists, in legacy naming. */
 export interface CloudChannelWrite {
   phone_number_id: string
