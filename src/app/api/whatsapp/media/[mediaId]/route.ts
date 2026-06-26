@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getMediaUrl, downloadMedia } from '@/lib/whatsapp/meta-api'
 import { decrypt } from '@/lib/whatsapp/encryption'
+import { getAccountCloudConfig } from '@/lib/whatsapp/channel/resolve'
 
 export async function GET(
   request: Request,
@@ -48,12 +49,11 @@ export async function GET(
       )
     }
 
-    // Fetch and decrypt WhatsApp config
-    const { data: config, error: configError } = await supabase
-      .from('whatsapp_config')
-      .select('*')
-      .eq('account_id', accountId)
-      .single()
+    // Fetch and decrypt the account's Cloud channel (was whatsapp_config).
+    const { data: config, error: configError } = await getAccountCloudConfig(
+      supabase,
+      accountId,
+    )
 
     if (configError || !config) {
       return NextResponse.json(

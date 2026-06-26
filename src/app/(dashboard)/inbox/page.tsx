@@ -183,10 +183,15 @@ export default function InboxPage() {
         return;
       }
 
+      // The account's Cloud channel (was whatsapp_config). Connected if
+      // any cloud channel reports 'connected'.
       const { data } = await supabase
-        .from("whatsapp_config")
+        .from("channels")
         .select("status")
         .eq("account_id", accountId)
+        .eq("provider", "cloud")
+        .order("created_at", { ascending: true })
+        .limit(1)
         .maybeSingle();
 
       setWhatsappConnected(data?.status === "connected");

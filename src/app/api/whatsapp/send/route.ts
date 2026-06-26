@@ -6,7 +6,8 @@ import {
   sendMediaMessage,
   type MediaKind,
 } from '@/lib/whatsapp/meta-api'
-import { decrypt, encrypt, isLegacyFormat } from '@/lib/whatsapp/encryption'
+import { decrypt } from '@/lib/whatsapp/encryption'
+import { getAccountCloudConfig } from '@/lib/whatsapp/channel/resolve'
 import { supabaseAdmin } from '@/lib/flows/admin-client'
 import {
   sanitizePhoneForMeta,
@@ -165,12 +166,12 @@ export async function POST(request: Request) {
       )
     }
 
-    // Fetch and decrypt WhatsApp config
-    const { data: config, error: configError } = await supabase
-      .from('whatsapp_config')
-      .select('*')
-      .eq('account_id', accountId)
-      .single()
+    // Fetch and decrypt the account's Cloud channel (was whatsapp_config;
+    // now sourced from the channels table via the resolver).
+    const { data: config, error: configError } = await getAccountCloudConfig(
+      supabase,
+      accountId,
+    )
 
     if (configError || !config) {
       return NextResponse.json(
@@ -179,27 +180,11 @@ export async function POST(request: Request) {
       )
     }
 
+    // decrypt() transparently reads legacy CBC ciphertext too. The
+    // fire-and-forget CBC→GCM self-heal that lived here is deferred to
+    // the channels write path; it wrote whatsapp_config, which no longer
+    // backs this read.
     const accessToken = decrypt(config.access_token)
-
-    // Self-heal legacy CBC-encrypted tokens. Fire-and-forget: we
-    // return from the send without waiting, so a failed upgrade just
-    // means the next send tries again. The upgrade is idempotent —
-    // concurrent sends both produce valid GCM ciphertexts of the same
-    // plaintext, last write wins.
-    if (isLegacyFormat(config.access_token)) {
-      void supabase
-        .from('whatsapp_config')
-        .update({ access_token: encrypt(accessToken) })
-        .eq('id', config.id)
-        .then(({ error }) => {
-          if (error) {
-            console.warn(
-              '[whatsapp/send] access_token GCM upgrade failed:',
-              error.message,
-            )
-          }
-        })
-    }
 
     // Resolve the reply target (if any) to its Meta message_id, which is
     // what `context.message_id` on the outgoing Meta payload needs. The
