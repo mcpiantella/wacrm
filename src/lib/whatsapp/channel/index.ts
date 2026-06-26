@@ -7,4 +7,5 @@ export type {
   WhatsAppChannel,
 } from './types'
 export { CloudApiChannel } from './cloud-api-channel'
+export { EvolutionChannel } from './evolution-channel'
 export { createChannel } from './factory'
