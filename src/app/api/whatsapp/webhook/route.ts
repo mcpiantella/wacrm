@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { decrypt, encrypt, isLegacyFormat } from '@/lib/whatsapp/encryption'
+import { decrypt } from '@/lib/whatsapp/encryption'
+import { getCloudConfigByPhoneNumberId } from '@/lib/whatsapp/channel/resolve'
 import { getMediaUrl, downloadMedia } from '@/lib/whatsapp/meta-api'
 import { normalizePhone } from '@/lib/whatsapp/phone-utils'
 import { findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe'
@@ -93,29 +94,38 @@ export async function GET(request: Request) {
       )
     }
 
-    // Fetch all whatsapp configs to check verify tokens
-    const { data: configs, error: configError } = await supabaseAdmin()
-      .from('whatsapp_config')
-      .select('id, verify_token')
+    // Fetch all Cloud channels to check verify tokens. verify_token now
+    // lives in channels.config (was whatsapp_config.verify_token).
+    const { data: channelRows, error: configError } = await supabaseAdmin()
+      .from('channels')
+      .select('id, config')
+      .eq('provider', 'cloud')
 
-    if (configError || !configs) {
-      console.error('Error fetching configs for verification:', configError)
+    if (configError || !channelRows) {
+      console.error('Error fetching channels for verification:', configError)
       return NextResponse.json(
         { error: 'Verification failed' },
         { status: 403 }
       )
     }
 
-    // Check if any config's verify_token matches. Also collect the
-    // matching row so we can opportunistically upgrade its token to
-    // GCM if it was still in the legacy CBC format.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let matchedConfig: any = null
+    const configs = channelRows.map(
+      (r: { id: string; config: { verify_token?: string } | null }) => ({
+        id: r.id,
+        verify_token: r.config?.verify_token ?? null,
+      }),
+    )
+
+    // Check if any channel's verify_token matches. The legacy CBC→GCM
+    // self-heal that ran here wrote whatsapp_config; with verify_token
+    // in channels.config JSONB it's deferred to the channels write path.
+    // decrypt() still reads any legacy CBC ciphertext transparently.
+    let matched = false
     for (const config of configs) {
       if (!config.verify_token) continue
       try {
         if (decrypt(config.verify_token) === verifyToken) {
-          matchedConfig = config
+          matched = true
           break
         }
       } catch {
@@ -123,23 +133,7 @@ export async function GET(request: Request) {
       }
     }
 
-    if (matchedConfig) {
-      // Fire-and-forget GCM upgrade. Safe to run on every subscribe
-      // since it's a no-op once the column is already GCM.
-      if (isLegacyFormat(matchedConfig.verify_token)) {
-        void supabaseAdmin()
-          .from('whatsapp_config')
-          .update({ verify_token: encrypt(verifyToken) })
-          .eq('id', matchedConfig.id)
-          .then(({ error }: { error: unknown }) => {
-            if (error) {
-              console.warn(
-                '[webhook] verify_token GCM upgrade failed:',
-                (error as { message?: string })?.message ?? error,
-              )
-            }
-          })
-      }
+    if (matched) {
       // Return challenge as plain text
       return new Response(challenge, {
         status: 200,
@@ -222,42 +216,40 @@ async function processWebhook(body: { entry?: WhatsAppWebhookEntry[] }) {
 
       const phoneNumberId = value.metadata.phone_number_id
 
-      // Find user's config by phone_number_id. `.single()` returns
-      // PGRST116 for both 0 rows AND ≥2 rows — distinguish them so
-      // operators see the real cause in logs. ≥2 rows shouldn't happen
-      // post-migration 013 (UNIQUE constraint), but a row created
-      // before the constraint, or a race, would still surface here.
-      const { data: configRows, error: configError } = await supabaseAdmin()
-        .from('whatsapp_config')
-        .select('*')
-        .eq('phone_number_id', phoneNumberId)
+      // Find the Cloud channel that owns this phone_number_id (=
+      // identifier). channels.UNIQUE(provider, identifier) guarantees at
+      // most one, so the old ≥2-rows defensive branch is gone — the
+      // constraint makes that state unreachable.
+      const { data: config, error: configError } =
+        await getCloudConfigByPhoneNumberId(supabaseAdmin(), phoneNumberId)
 
       if (configError) {
         console.error(
-          'Error fetching whatsapp_config for phone_number_id:',
+          'Error fetching channel for phone_number_id:',
           phoneNumberId,
           configError
         )
         continue
       }
 
-      if (!configRows || configRows.length === 0) {
-        console.error('No config found for phone_number_id:', phoneNumberId)
+      if (!config) {
+        console.error('No channel found for phone_number_id:', phoneNumberId)
         continue
       }
 
-      if (configRows.length > 1) {
+      // user_id is the sender-of-record for inbound inserts that carry a
+      // NOT NULL user_id FK. channels.user_id is ON DELETE SET NULL, so a
+      // channel whose creator was deleted has none — we can't attribute
+      // the inserts, so drop with a clear, actionable log. The config
+      // route always sets user_id on save, so this is rare.
+      if (!config.user_id) {
         console.error(
-          `Multiple configs (${configRows.length}) found for phone_number_id:`,
+          'Channel has no owner user_id for phone_number_id:',
           phoneNumberId,
-          '— inbound message dropped. Resolve duplicates so each number maps to a single account.',
-          'Account owners:',
-          configRows.map((r: { account_id: string; user_id: string }) => `${r.account_id} (admin ${r.user_id})`)
+          '— inbound dropped. Re-save the WhatsApp configuration in Settings.',
         )
         continue
       }
-
-      const config = configRows[0]
 
       const decryptedAccessToken = decrypt(config.access_token)
 

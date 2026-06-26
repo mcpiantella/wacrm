@@ -7,6 +7,10 @@ import {
   verifyPhoneNumber,
 } from '@/lib/whatsapp/meta-api'
 import { encrypt, decrypt } from '@/lib/whatsapp/encryption'
+import {
+  getAccountCloudConfig,
+  buildCloudChannelRow,
+} from '@/lib/whatsapp/channel/resolve'
 
 /**
  * Resolve the caller's account_id from their profile. Inlined here
@@ -85,14 +89,13 @@ export async function GET() {
       )
     }
 
-    const { data: config, error: configError } = await supabase
-      .from('whatsapp_config')
-      .select('phone_number_id, access_token, status')
-      .eq('account_id', accountId)
-      .maybeSingle()
+    const { data: config, error: configError } = await getAccountCloudConfig(
+      supabase,
+      accountId,
+    )
 
     if (configError) {
-      console.error('Error fetching whatsapp_config:', configError)
+      console.error('Error fetching channel config:', configError)
       return NextResponse.json(
         { connected: false, reason: 'db_error', message: 'Failed to fetch configuration' },
         { status: 200 }
@@ -211,9 +214,10 @@ export async function POST(request: Request) {
     // account_id (not user_id) since teammates inside the same account
     // all share one config; the conflict is between accounts.
     const { data: claimed, error: claimedError } = await supabaseAdmin()
-      .from('whatsapp_config')
+      .from('channels')
       .select('account_id')
-      .eq('phone_number_id', phone_number_id)
+      .eq('provider', 'cloud')
+      .eq('identifier', phone_number_id)
       .neq('account_id', accountId)
       .maybeSingle()
 
@@ -272,11 +276,7 @@ export async function POST(request: Request) {
     // Look up any pre-existing row for this account so we know whether
     // this number is already registered with Meta — if so we can skip
     // /register when the user didn't provide a PIN this time around.
-    const { data: existing } = await supabase
-      .from('whatsapp_config')
-      .select('id, registered_at, phone_number_id')
-      .eq('account_id', accountId)
-      .maybeSingle()
+    const { data: existing } = await getAccountCloudConfig(supabase, accountId)
 
     const sameNumber =
       existing?.phone_number_id === phone_number_id &&
@@ -350,50 +350,50 @@ export async function POST(request: Request) {
       }
     }
 
-    // Persist everything in one shot. If /register failed we still
-    // store the credentials and the error so the UI can guide the
-    // user through a retry.
-    const baseRow = {
+    // Persist into the channels table (provider='cloud'). If /register
+    // failed we still store the credentials + error so the UI can guide
+    // the user through a retry. buildCloudChannelRow maps these legacy
+    // fields onto channels columns + config/credentials JSONB.
+    const channelRow = buildCloudChannelRow({
       phone_number_id,
       waba_id: waba_id || null,
-      access_token: encryptedAccessToken,
-      verify_token: encryptedVerifyToken,
+      encrypted_access_token: encryptedAccessToken,
+      encrypted_verify_token: encryptedVerifyToken,
       status: registrationError ? 'disconnected' : 'connected',
       connected_at: registrationError ? null : new Date().toISOString(),
       registered_at: registrationError ? null : registeredAt,
       subscribed_apps_at: subscribedAppsAt ?? null,
       last_registration_error: registrationError,
-      updated_at: new Date().toISOString(),
-    }
+    })
 
     if (existing) {
       const { error: updateError } = await supabase
-        .from('whatsapp_config')
-        .update(baseRow)
-        .eq('account_id', accountId)
+        .from('channels')
+        .update(channelRow)
+        .eq('id', existing.id)
 
       if (updateError) {
-        console.error('Error updating whatsapp_config:', updateError)
+        console.error('Error updating channel config:', updateError)
         return NextResponse.json(
           { error: 'Failed to update configuration' },
           { status: 500 }
         )
       }
     } else {
-      // Insert with both columns: `account_id` is the tenancy key
-      // (NOT NULL post-017, UNIQUE so duplicates trip the constraint
-      // up-front), `user_id` is the audit column identifying which
-      // member of the account saved the config.
+      // `account_id` is the tenancy key; `user_id` is the audit column
+      // identifying which member saved it; `provider`/`identifier` form
+      // the global UNIQUE that stops two accounts claiming one number.
       const { error: insertError } = await supabase
-        .from('whatsapp_config')
+        .from('channels')
         .insert({
           account_id: accountId,
           user_id: user.id,
-          ...baseRow,
+          provider: 'cloud',
+          ...channelRow,
         })
 
       if (insertError) {
-        console.error('Error inserting whatsapp_config:', insertError)
+        console.error('Error inserting channel config:', insertError)
         return NextResponse.json(
           { error: 'Failed to save configuration' },
           { status: 500 }
@@ -460,12 +460,13 @@ export async function DELETE() {
     }
 
     const { error: deleteError } = await supabase
-      .from('whatsapp_config')
+      .from('channels')
       .delete()
       .eq('account_id', accountId)
+      .eq('provider', 'cloud')
 
     if (deleteError) {
-      console.error('Error deleting whatsapp_config:', deleteError)
+      console.error('Error deleting channel config:', deleteError)
       return NextResponse.json(
         { error: 'Failed to delete configuration' },
         { status: 500 }

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { decrypt } from '@/lib/whatsapp/encryption'
+import { getAccountCloudConfig } from '@/lib/whatsapp/channel/resolve'
 import {
   getSubscribedApps,
   verifyPhoneNumber,
@@ -55,11 +56,7 @@ export async function GET() {
     })
   }
 
-  const { data: config } = await supabase
-    .from('whatsapp_config')
-    .select('*')
-    .eq('account_id', accountId)
-    .maybeSingle()
+  const { data: config } = await getAccountCloudConfig(supabase, accountId)
 
   if (!config) {
     return NextResponse.json({

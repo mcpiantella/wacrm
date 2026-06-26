@@ -29,6 +29,7 @@ import {
   AccordionContent,
 } from '@/components/ui/accordion';
 import type { WhatsAppConfig as WhatsAppConfigType } from '@/types';
+import { getAccountCloudConfig } from '@/lib/whatsapp/channel/resolve';
 
 const MASKED_TOKEN = '••••••••••••••••';
 
@@ -94,18 +95,16 @@ export function WhatsAppConfig() {
       // account sees the same saved configuration. UNIQUE(account_id)
       // on the table guarantees the .maybeSingle() return type
       // remains accurate.
-      const { data, error } = await supabase
-        .from('whatsapp_config')
-        .select('*')
-        .eq('account_id', acctId)
-        .maybeSingle();
+      // The account's Cloud channel, flattened to the legacy
+      // whatsapp_config shape (was a direct whatsapp_config query).
+      const { data, error } = await getAccountCloudConfig(supabase, acctId);
 
       if (error) {
         console.error('Failed to load config row:', error);
       }
 
       if (data) {
-        setConfig(data);
+        setConfig(data as unknown as WhatsAppConfigType);
         setPhoneNumberId(data.phone_number_id || '');
         setWabaId(data.waba_id || '');
         setAccessToken(MASKED_TOKEN);
