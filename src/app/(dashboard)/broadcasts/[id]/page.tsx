@@ -38,6 +38,7 @@ import {
   getBroadcastStatus,
   getRecipientStatus,
 } from '@/lib/broadcast-status';
+import { SdrConfigCard } from '@/components/broadcasts/sdr-config-card';
 
 interface StatCardProps {
   label: string;
@@ -394,6 +395,9 @@ export default function BroadcastDetailPage() {
       </div>
 
       <FunnelChart steps={funnelSteps} />
+
+      {/* AI SDR configuration for this campaign */}
+      <SdrConfigCard broadcastId={broadcast.id} />
 
       {/* Recipients Table */}
       <div className="rounded-xl border border-border bg-card">
