@@ -3,6 +3,7 @@ import { findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe'
 import { runAutomationsForTrigger } from '@/lib/automations/engine'
 import { dispatchInboundToFlows } from '@/lib/flows/engine'
 import { supabaseAdmin } from '@/lib/flows/admin-client'
+import { enqueueSdr } from '@/lib/queue/sdr-queue'
 
 /**
  * Provider-agnostic inbound pipeline (S6).
@@ -146,6 +147,11 @@ export async function processInboundMessage(
 
   await flagBroadcastReplyIfAny(input.accountId, contactRecord.id)
 
+  // SDR enqueue — only when this conversation has an active SDR. Debounced
+  // so rapid-fire messages collapse into one qualification run. Best-effort:
+  // a Redis hiccup (or no REDIS_URL) must never break the inbound pipeline.
+  await maybeEnqueueSdr(input.accountId, conversation)
+
   // Flow runner dispatch. Awaited because the `consumed` result decides
   // whether content-level automation triggers fire.
   const flowResult = await dispatchInboundToFlows({
@@ -285,6 +291,29 @@ export async function findOrCreateConversation(
   }
 
   return newConv
+}
+
+/**
+ * Enqueue a debounced SDR run if this conversation's SDR is active and its
+ * campaign config is enabled. Reads debounce from the campaign's config so
+ * each campaign can tune its batching window. Never throws.
+ */
+async function maybeEnqueueSdr(
+  accountId: string,
+  conversation: { id: string; sdr_status?: string | null; broadcast_id?: string | null },
+) {
+  try {
+    if (conversation.sdr_status !== 'active' || !conversation.broadcast_id) return
+    const { data: cfg } = await supabaseAdmin()
+      .from('sdr_configs')
+      .select('enabled, debounce_seconds')
+      .eq('broadcast_id', conversation.broadcast_id)
+      .maybeSingle()
+    if (!cfg || !cfg.enabled) return
+    await enqueueSdr(conversation.id, accountId, cfg.debounce_seconds ?? 12)
+  } catch (err) {
+    console.error('[sdr] enqueue failed:', err instanceof Error ? err.message : err)
+  }
 }
 
 async function flagBroadcastReplyIfAny(accountId: string, contactId: string) {
