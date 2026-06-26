@@ -43,6 +43,18 @@ describe('chatComplete', () => {
     expect(anthropicCreate).not.toHaveBeenCalled()
   })
 
+  it('injects "json" into the OpenAI system prompt in json mode', async () => {
+    vi.stubEnv('OPENAI_API_KEY', 'sk-test')
+    openaiCreate.mockResolvedValue(openaiReply('{"ok":true}'))
+
+    await chatComplete({ system: 'Você é um SDR', messages: [{ role: 'user', content: 'oi' }], json: true })
+
+    const call = openaiCreate.mock.calls[0][0]
+    expect(call.response_format).toEqual({ type: 'json_object' })
+    // OpenAI 400s on json_object unless the messages mention "json".
+    expect(call.messages[0].content.toLowerCase()).toContain('json')
+  })
+
   it('falls back to Anthropic when OpenAI throws', async () => {
     vi.stubEnv('OPENAI_API_KEY', 'sk-test')
     vi.stubEnv('ANTHROPIC_API_KEY', 'an-test')

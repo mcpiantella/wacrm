@@ -49,10 +49,16 @@ const DEFAULT_ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL ?? 'claude-sonnet-4-
 async function openaiComplete(input: ChatCompleteInput): Promise<ChatCompleteResult> {
   const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
   const model = input.model ?? DEFAULT_OPENAI_MODEL
+  // OpenAI's `json_object` response_format requires the literal word "json"
+  // to appear somewhere in the messages, or it 400s. Inject the instruction
+  // into the system prompt (mirrors the Anthropic path below).
+  const system = input.json
+    ? `${input.system}\n\nResponda APENAS com um objeto JSON válido, sem texto fora dele.`
+    : input.system
   const res = await client.chat.completions.create({
     model,
     messages: [
-      { role: 'system', content: input.system },
+      { role: 'system', content: system },
       ...input.messages.map((m) => ({ role: m.role, content: m.content })),
     ],
     ...(input.json ? { response_format: { type: 'json_object' as const } } : {}),
