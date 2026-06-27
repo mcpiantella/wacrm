@@ -66,7 +66,7 @@ function matchesHandoffKeyword(text: string, keywords: string[]): boolean {
  * Anthropic fallback requires it; harmless for OpenAI). `audioTranscripts`
  * substitutes text for audio messages by id.
  */
-function toLlmMessages(
+export function toLlmMessages(
   messages: SdrMessage[],
   audioTranscripts: Map<string, string>,
 ): { role: 'user' | 'assistant'; content: string }[] {
@@ -205,7 +205,7 @@ export async function loadSdrContext(
 ): Promise<SdrContext | null> {
   const { data: conversation, error: convErr } = await supabase
     .from('conversations')
-    .select('id, account_id, contact_id, channel_id, broadcast_id, sdr_status')
+    .select('id, account_id, contact_id, channel_id, broadcast_id, sdr_status, user_id')
     .eq('id', conversationId)
     .maybeSingle()
   if (convErr || !conversation) return null
@@ -216,7 +216,7 @@ export async function loadSdrContext(
         ? supabase
             .from('sdr_configs')
             .select(
-              'enabled, system_prompt, qualification_criteria, model, handoff_keywords, max_turns',
+              'enabled, system_prompt, qualification_criteria, model, handoff_keywords, max_turns, follow_up_enabled, follow_up_delays, cold_tag',
             )
             .eq('broadcast_id', conversation.broadcast_id)
             .maybeSingle()

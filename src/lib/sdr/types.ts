@@ -20,6 +20,7 @@ export interface SdrContext {
     channel_id: string | null
     broadcast_id: string | null
     sdr_status: 'off' | 'active' | 'handoff'
+    user_id: string
   }
   config: {
     enabled: boolean
@@ -28,6 +29,10 @@ export interface SdrContext {
     model: string | null
     handoff_keywords: string[]
     max_turns: number
+    follow_up_enabled: boolean
+    /** Reminder offsets in minutes from the bot's awaiting message. */
+    follow_up_delays: number[]
+    cold_tag: string
   } | null
   contact: { id: string; name: string | null; phone: string | null }
   /** Full history, ordered oldest → newest. */
@@ -51,6 +56,11 @@ export interface SdrDecision {
   /** Raw model output (parsed JSON), for debugging. */
   raw?: unknown
 }
+
+export type FollowUpDecision =
+  | { action: 'noop'; reason: string }
+  | { action: 'cold'; reason: string }
+  | { action: 'send'; text: string; final: boolean }
 
 /** Injected side-effect deps — keeps the core pure and testable. */
 export interface SdrDeps {

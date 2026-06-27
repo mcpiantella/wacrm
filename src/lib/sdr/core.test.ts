@@ -39,6 +39,7 @@ function ctx(over: Partial<SdrContext> = {}): SdrContext {
       channel_id: 'ch-1',
       broadcast_id: 'b-1',
       sdr_status: 'active',
+      user_id: 'u-1',
       ...(over.conversation ?? {}),
     },
     config: over.config !== undefined ? over.config : {
@@ -48,6 +49,9 @@ function ctx(over: Partial<SdrContext> = {}): SdrContext {
       model: null,
       handoff_keywords: ['falar com humano'],
       max_turns: 20,
+      follow_up_enabled: true,
+      follow_up_delays: [180, 1440],
+      cold_tag: 'lead-frio',
     },
     contact: { id: 'c-1', name: 'Lead', phone: '+551', ...(over.contact ?? {}) },
     messages: over.messages ?? [msg('customer', 'oi')],
@@ -87,7 +91,7 @@ describe('decideFromContext — guards', () => {
   it('noop when max_turns is reached', async () => {
     const d = await decideFromContext(
       ctx({
-        config: { enabled: true, system_prompt: '', qualification_criteria: [], model: null, handoff_keywords: [], max_turns: 1 },
+        config: { enabled: true, system_prompt: '', qualification_criteria: [], model: null, handoff_keywords: [], max_turns: 1, follow_up_enabled: true, follow_up_delays: [180, 1440], cold_tag: 'lead-frio' },
         messages: [msg('customer', 'a'), msg('bot', 'b'), msg('customer', 'c')],
       }),
       deps,

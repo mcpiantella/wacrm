@@ -60,6 +60,7 @@ function ctx(over: Partial<SdrContext['conversation']> = {}): SdrContext {
       channel_id: 'ch-1',
       broadcast_id: 'b-1',
       sdr_status: 'active',
+      user_id: 'u-1',
       ...over,
     },
     config: null,
