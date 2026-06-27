@@ -145,7 +145,14 @@ export async function processInboundMessage(
     console.error('[inbound] Error updating conversation:', convError)
   }
 
-  await flagBroadcastReplyIfAny(input.accountId, contactRecord.id)
+  const repliedBroadcastId = await flagBroadcastReplyIfAny(
+    input.accountId,
+    contactRecord.id,
+  )
+
+  // Auto-activate the SDR when the lead replies to an SDR-enabled campaign.
+  // Mutates `conversation` in place so the enqueue below sees 'active'.
+  await maybeActivateSdr(input.accountId, conversation, repliedBroadcastId)
 
   // SDR enqueue — only when this conversation has an active SDR. Debounced
   // so rapid-fire messages collapse into one qualification run. Best-effort:
@@ -319,7 +326,15 @@ async function maybeEnqueueSdr(
   }
 }
 
-async function flagBroadcastReplyIfAny(accountId: string, contactId: string) {
+/**
+ * If the contact replied to a campaign, mark that recipient 'replied' and
+ * return its broadcast id (so the caller can auto-activate the SDR). Returns
+ * null when the contact isn't a fresh recipient of any campaign. Never throws.
+ */
+async function flagBroadcastReplyIfAny(
+  accountId: string,
+  contactId: string,
+): Promise<string | null> {
   try {
     const { data: recs, error } = await supabaseAdmin()
       .from('broadcast_recipients')
@@ -330,7 +345,7 @@ async function flagBroadcastReplyIfAny(accountId: string, contactId: string) {
       .order('created_at', { ascending: false })
       .limit(1)
 
-    if (error || !recs || recs.length === 0) return
+    if (error || !recs || recs.length === 0) return null
 
     const row = recs[0]
     const { error: updErr } = await supabaseAdmin()
@@ -341,7 +356,53 @@ async function flagBroadcastReplyIfAny(accountId: string, contactId: string) {
     if (updErr) {
       console.error('[inbound] Error marking broadcast recipient replied:', updErr)
     }
+    return (row.broadcast_id as string | null) ?? null
   } catch (err) {
     console.error('[inbound] flagBroadcastReplyIfAny failed:', err)
+    return null
+  }
+}
+
+/**
+ * Auto-activate the SDR when a lead replies to a campaign whose SDR config
+ * is enabled. Only touches a "fresh" thread (sdr_status 'off', no campaign
+ * link) — never overrides a human handoff or an already-active SDR. Mutates
+ * the in-memory `conversation` so the enqueue step sees the new state.
+ * Never throws.
+ */
+async function maybeActivateSdr(
+  accountId: string,
+  conversation: { id: string; sdr_status?: string | null; broadcast_id?: string | null },
+  broadcastId: string | null,
+) {
+  try {
+    if (!broadcastId) return
+    if (conversation.sdr_status && conversation.sdr_status !== 'off') return
+    if (conversation.broadcast_id) return
+
+    const { data: cfg } = await supabaseAdmin()
+      .from('sdr_configs')
+      .select('enabled')
+      .eq('broadcast_id', broadcastId)
+      .maybeSingle()
+    if (!cfg || !cfg.enabled) return
+
+    const { error } = await supabaseAdmin()
+      .from('conversations')
+      .update({
+        sdr_status: 'active',
+        broadcast_id: broadcastId,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', conversation.id)
+    if (error) {
+      console.error('[sdr] auto-activate failed:', error)
+      return
+    }
+    // Reflect the new state so maybeEnqueueSdr enqueues this very reply.
+    conversation.sdr_status = 'active'
+    conversation.broadcast_id = broadcastId
+  } catch (err) {
+    console.error('[sdr] auto-activate failed:', err instanceof Error ? err.message : err)
   }
 }
