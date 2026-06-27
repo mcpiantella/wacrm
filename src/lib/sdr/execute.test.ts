@@ -1,6 +1,7 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { executeDecision, type ExecuteDeps } from './execute'
-import type { SdrContext, SdrDecision } from './types'
+import { executeDecision, executeFollowUp, type ExecuteDeps } from './execute'
+import type { SdrContext, SdrDecision, FollowUpDecision } from './types'
 
 /**
  * Minimal Supabase fake. `insert`/`update` return thenable builders so
@@ -141,5 +142,70 @@ describe('executeDecision', () => {
     await expect(executeDecision(deps, replyDecision, ctx())).resolves.toBeUndefined()
     expect(calls.runs[0]).toMatchObject({ action: 'error' })
     expect(calls.runs[0].error).toMatch(/Connection Closed/)
+  })
+})
+
+function fakeSupabase() {
+  const calls: Record<string, unknown[]> = { update: [], insert: [], upsert: [], select: [] }
+  const make = (table: string): any => {
+    const chain: any = {}
+    chain.update = (v: unknown) => { calls.update.push({ table, v }); return chain }
+    chain.insert = (v: unknown) => { calls.insert.push({ table, v }); return chain }
+    chain.upsert = (v: unknown, o: unknown) => { calls.upsert.push({ table, v, o }); return chain }
+    chain.select = () => chain
+    chain.eq = () => chain
+    chain.ilike = () => chain
+    chain.maybeSingle = async () => ({ data: table === 'tags' ? { id: 'tag1' } : null, error: null })
+    chain.single = async () => ({ data: { id: 'msg1' }, error: null })
+    return chain
+  }
+  return { from: (t: string) => make(t), _calls: calls }
+}
+
+const ctxFU = {
+  conversation: { id: 'c1', account_id: 'a1', contact_id: 'ct1', channel_id: 'ch1', broadcast_id: 'b1', sdr_status: 'active' as const, user_id: 'u1' },
+  config: { enabled: true, system_prompt: '', qualification_criteria: [], model: null, handoff_keywords: [], max_turns: 20, follow_up_enabled: true, follow_up_delays: [180, 1440], cold_tag: 'lead-frio' },
+  contact: { id: 'ct1', name: 'Lead', phone: '5511999' },
+  messages: [],
+}
+const channelFU = { id: 'ch1', account_id: 'a1', user_id: 'u1', provider: 'evolution', identifier: 'inst', display_name: 'x', phone_e164: null, status: 'connected', config: {}, credentials: {} }
+
+describe('executeFollowUp', () => {
+  it('sends a non-final reminder and logs a followup run', async () => {
+    const sup = fakeSupabase()
+    const send = vi.fn().mockResolvedValue({ messageId: 'wamid' })
+    const deps = { supabase: sup, sendOnChannel: send } as unknown as Parameters<typeof executeFollowUp>[0]
+    const decision: FollowUpDecision = { action: 'send', text: 'oi de novo', final: false }
+
+    await executeFollowUp(deps, decision, ctxFU as never, channelFU as never, 1)
+
+    expect(send).toHaveBeenCalledWith(channelFU, '5511999', 'oi de novo')
+    const inserts = sup._calls.insert.map((c: any) => (c.v as any).action ?? (c.v as any).sender_type)
+    expect(inserts).toContain('bot')      // reminder message
+    expect(inserts).toContain('followup') // run row
+    const offUpdate = sup._calls.update.find((c: any) => (c.v as any).sdr_status === 'off')
+    expect(offUpdate).toBeUndefined()     // not final → no cold close
+  })
+
+  it('on the final reminder also closes cold (sdr_status off + tag)', async () => {
+    const sup = fakeSupabase()
+    const send = vi.fn().mockResolvedValue({ messageId: 'wamid' })
+    const deps = { supabase: sup, sendOnChannel: send } as unknown as Parameters<typeof executeFollowUp>[0]
+
+    await executeFollowUp(deps, { action: 'send', text: 'última', final: true }, ctxFU as never, channelFU as never, 2)
+
+    expect(sup._calls.update.find((c: any) => (c.v as any).sdr_status === 'off')).toBeDefined()
+    expect(sup._calls.upsert.some((c: any) => c.table === 'contact_tags')).toBe(true)
+  })
+
+  it('cold decision closes without sending', async () => {
+    const sup = fakeSupabase()
+    const send = vi.fn()
+    const deps = { supabase: sup, sendOnChannel: send } as unknown as Parameters<typeof executeFollowUp>[0]
+
+    await executeFollowUp(deps, { action: 'cold', reason: 'window' }, ctxFU as never, channelFU as never, 1)
+
+    expect(send).not.toHaveBeenCalled()
+    expect(sup._calls.update.find((c: any) => (c.v as any).sdr_status === 'off')).toBeDefined()
   })
 })
