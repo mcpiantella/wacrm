@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { enqueueSdr, sdrJobId, SDR_QUEUE_NAME } from './sdr-queue'
+import { enqueueFollowUp, followUpJobId } from './sdr-queue'
 
 function fakeQueue() {
   return {
@@ -54,6 +55,33 @@ describe('enqueueSdr', () => {
       expect.any(Object),
       expect.objectContaining({ delay: 0 }),
     )
+  })
+})
+
+describe('enqueueFollowUp', () => {
+  it('adds a delayed followup job keyed by conversation', async () => {
+    const q = fakeQueue()
+    q.getJob.mockResolvedValue(null)
+
+    await enqueueFollowUp('conv-1', 'acc-1', 2, 21 * 60, q)
+
+    expect(q.add).toHaveBeenCalledWith(
+      'followup',
+      { kind: 'followup', conversationId: 'conv-1', accountId: 'acc-1', attempt: 2 },
+      expect.objectContaining({ jobId: 'sdrfu-conv-1', delay: 21 * 60 * 60_000 }),
+    )
+  })
+
+  it('removes a pending followup before re-adding (reschedule)', async () => {
+    const q = fakeQueue()
+    const remove = vi.fn().mockResolvedValue(undefined)
+    q.getJob.mockResolvedValue({ remove })
+    await enqueueFollowUp('conv-1', 'acc-1', 1, 180, q)
+    expect(remove).toHaveBeenCalledTimes(1)
+  })
+
+  it('derives a hyphen-separated job id (no colon)', () => {
+    expect(followUpJobId('abc')).toBe('sdrfu-abc')
   })
 })
 

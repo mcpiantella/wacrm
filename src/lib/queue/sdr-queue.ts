@@ -6,6 +6,10 @@ export const SDR_QUEUE_NAME = 'sdr'
 export interface SdrJobData {
   conversationId: string
   accountId: string
+  /** Job kind; absent means the original debounce-qualify job. */
+  kind?: 'qualify' | 'followup'
+  /** 1-based reminder number, for followup jobs. */
+  attempt?: number
 }
 
 let queue: Queue<SdrJobData> | null = null
@@ -69,6 +73,41 @@ export async function enqueueSdr(
     {
       jobId,
       delay: Math.max(0, debounceSeconds) * 1000,
+      removeOnComplete: true,
+      removeOnFail: 100,
+    },
+  )
+}
+
+/** Stable per-conversation follow-up job id (hyphen, not ':' — BullMQ bans ':'). */
+export function followUpJobId(conversationId: string): string {
+  return `sdrfu-${conversationId}`
+}
+
+/**
+ * Schedule (or reschedule) a follow-up reminder for a conversation.
+ * One pending follow-up per conversation: a stable jobId means re-adding
+ * replaces the previous one. `delayMinutes` is the gap from now.
+ */
+export async function enqueueFollowUp(
+  conversationId: string,
+  accountId: string,
+  attempt: number,
+  delayMinutes: number,
+  queueOverride?: Pick<Queue<SdrJobData>, 'getJob' | 'add'>,
+): Promise<void> {
+  const q = queueOverride ?? getSdrQueue()
+  const jobId = followUpJobId(conversationId)
+
+  const existing = await q.getJob(jobId)
+  if (existing) await existing.remove().catch(() => undefined)
+
+  await q.add(
+    'followup',
+    { kind: 'followup', conversationId, accountId, attempt },
+    {
+      jobId,
+      delay: Math.max(0, delayMinutes) * 60_000,
       removeOnComplete: true,
       removeOnFail: 100,
     },
