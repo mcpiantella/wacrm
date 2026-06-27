@@ -183,18 +183,19 @@ export default function InboxPage() {
         return;
       }
 
-      // The account's Cloud channel (was whatsapp_config). Connected if
-      // any cloud channel reports 'connected'.
+      // Multi-channel: the account is "connected" if ANY channel —
+      // Cloud API or Evolution — reports 'connected'. The old check looked
+      // only at provider='cloud', so an Evolution-only workspace saw a
+      // false "WhatsApp not connected" banner even with a working channel.
       const { data } = await supabase
         .from("channels")
-        .select("status")
+        .select("id")
         .eq("account_id", accountId)
-        .eq("provider", "cloud")
-        .order("created_at", { ascending: true })
+        .eq("status", "connected")
         .limit(1)
         .maybeSingle();
 
-      setWhatsappConnected(data?.status === "connected");
+      setWhatsappConnected(!!data);
     };
 
     checkConnection();
