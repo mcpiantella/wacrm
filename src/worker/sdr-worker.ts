@@ -14,12 +14,13 @@
 import './ws-polyfill'
 import { Worker } from 'bullmq'
 import { getRedisConnection } from '@/lib/queue/connection'
-import { SDR_QUEUE_NAME, type SdrJobData } from '@/lib/queue/sdr-queue'
+import { SDR_QUEUE_NAME, type SdrJobData, enqueueFollowUp } from '@/lib/queue/sdr-queue'
 import { supabaseAdmin } from '@/lib/flows/admin-client'
 import { chatComplete } from '@/lib/ai/chat'
 import { getTranscriber } from '@/lib/ai/transcription/factory'
 import { loadSdrContext, decideFromContext } from '@/lib/sdr/core'
-import { executeDecision, type ExecuteDeps } from '@/lib/sdr/execute'
+import { decideFollowUp } from '@/lib/sdr/followup'
+import { executeDecision, executeFollowUp, CHANNEL_COLUMNS, type ExecuteDeps } from '@/lib/sdr/execute'
 import { createChannel } from '@/lib/whatsapp/channel/factory'
 import type { ChannelRow } from '@/lib/whatsapp/channel/types'
 import type { SdrDeps } from '@/lib/sdr/types'
@@ -46,6 +47,18 @@ async function handleJob(conversationId: string): Promise<void> {
     const decision = await decideFromContext(ctx, sdrDeps)
     await executeDecision(execDeps, decision, ctx)
     console.log(`[sdr-worker] ${conversationId} → ${decision.action} (${decision.reason})`)
+    if (
+      decision.action === 'reply' &&
+      ctx.config?.follow_up_enabled &&
+      (ctx.config.follow_up_delays?.length ?? 0) > 0
+    ) {
+      await enqueueFollowUp(
+        conversationId,
+        ctx.conversation.account_id,
+        1,
+        ctx.config.follow_up_delays[0],
+      ).catch((e) => console.error('[sdr-worker] schedule follow-up failed:', e))
+    }
   } catch (err) {
     // The decide phase (LLM / transcription) threw — executeDecision never
     // ran, so nothing was logged. Persist an 'error' run so the failure is
@@ -69,10 +82,56 @@ async function handleJob(conversationId: string): Promise<void> {
   }
 }
 
+async function handleFollowUp(
+  conversationId: string,
+  accountId: string,
+  attempt: number,
+): Promise<void> {
+  const supabase = supabaseAdmin()
+  const ctx = await loadSdrContext(supabase, conversationId)
+  if (!ctx) return
+
+  let channel = null
+  let provider = ''
+  if (ctx.conversation.channel_id) {
+    const { data } = await supabase
+      .from('channels')
+      .select(CHANNEL_COLUMNS)
+      .eq('id', ctx.conversation.channel_id)
+      .maybeSingle()
+    channel = data
+    provider = (data?.provider as string) ?? ''
+  }
+
+  const decision = await decideFollowUp(ctx, attempt, provider, sdrDeps)
+  if (decision.action === 'noop') {
+    console.log(`[sdr-worker] followup ${conversationId} #${attempt} → noop (${decision.reason})`)
+    return
+  }
+
+  await executeFollowUp(execDeps, decision, ctx, channel as never, attempt)
+  console.log(`[sdr-worker] followup ${conversationId} #${attempt} → ${decision.action}`)
+
+  // Schedule the next reminder when this one was sent and isn't the last.
+  if (decision.action === 'send' && !decision.final) {
+    const delays = ctx.config?.follow_up_delays ?? []
+    const gap = (delays[attempt] ?? 0) - (delays[attempt - 1] ?? 0)
+    if (gap > 0) {
+      await enqueueFollowUp(conversationId, accountId, attempt + 1, gap).catch((e) =>
+        console.error('[sdr-worker] schedule next follow-up failed:', e),
+      )
+    }
+  }
+}
+
 const worker = new Worker<SdrJobData>(
   SDR_QUEUE_NAME,
   async (job) => {
-    await handleJob(job.data.conversationId)
+    if (job.data.kind === 'followup') {
+      await handleFollowUp(job.data.conversationId, job.data.accountId, job.data.attempt ?? 1)
+    } else {
+      await handleJob(job.data.conversationId)
+    }
   },
   {
     connection: getRedisConnection(),
