@@ -68,31 +68,35 @@ describe('enqueueFollowUp', () => {
     expect(q.add).toHaveBeenCalledWith(
       'followup',
       { kind: 'followup', conversationId: 'conv-1', accountId: 'acc-1', attempt: 2 },
-      expect.objectContaining({ jobId: 'sdrfu-conv-1', delay: 21 * 60 * 60_000 }),
+      expect.objectContaining({ jobId: 'sdrfu-conv-1-2', delay: 21 * 60 * 60_000 }),
     )
   })
 
-  it('removes a pending followup before re-adding (reschedule)', async () => {
+  it('removes a same-attempt pending job before re-adding (reschedule)', async () => {
     const q = fakeQueue()
     const remove = vi.fn().mockResolvedValue(undefined)
     q.getJob.mockResolvedValue({ remove })
     await enqueueFollowUp('conv-1', 'acc-1', 1, 180, q)
+    expect(q.getJob).toHaveBeenCalledWith('sdrfu-conv-1-1')
     expect(remove).toHaveBeenCalledTimes(1)
   })
 
-  it('derives a hyphen-separated job id (no colon)', () => {
-    expect(followUpJobId('abc')).toBe('sdrfu-abc')
+  it('derives a per-attempt hyphen-separated job id (no colon)', () => {
+    expect(followUpJobId('abc', 1)).toBe('sdrfu-abc-1')
+    expect(followUpJobId('abc', 2)).toBe('sdrfu-abc-2')
   })
 })
 
 describe('cancelFollowUp', () => {
-  it('removes a pending follow-up job when one exists', async () => {
+  it('removes every pending attempt for the conversation', async () => {
     const q = fakeQueue()
     const remove = vi.fn().mockResolvedValue(undefined)
     q.getJob.mockResolvedValue({ remove })
     await cancelFollowUp('conv-1', q)
-    expect(q.getJob).toHaveBeenCalledWith('sdrfu-conv-1')
-    expect(remove).toHaveBeenCalledTimes(1)
+    // Sweeps attempts 1..MAX_FOLLOWUP_ATTEMPTS (5).
+    expect(q.getJob).toHaveBeenCalledWith('sdrfu-conv-1-1')
+    expect(q.getJob).toHaveBeenCalledWith('sdrfu-conv-1-5')
+    expect(remove).toHaveBeenCalledTimes(5)
   })
 
   it('is a no-op when no follow-up is pending', async () => {

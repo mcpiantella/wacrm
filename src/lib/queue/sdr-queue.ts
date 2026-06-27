@@ -79,29 +79,40 @@ export async function enqueueSdr(
   )
 }
 
-/** Stable per-conversation follow-up job id (hyphen, not ':' — BullMQ bans ':'). */
-export function followUpJobId(conversationId: string): string {
-  return `sdrfu-${conversationId}`
+/** Hard cap on reminders per conversation (mirrors the config route's slice(0,5)). */
+export const MAX_FOLLOWUP_ATTEMPTS = 5
+
+/**
+ * Per-attempt follow-up job id (hyphen, not ':' — BullMQ bans ':').
+ * Distinct per attempt so all reminders can be scheduled up front at the
+ * reply: a single shared id can't hold more than one pending job, and
+ * rescheduling from *inside* a running follow-up job would dedupe against
+ * the still-active job and silently drop the next reminder.
+ */
+export function followUpJobId(conversationId: string, attempt: number): string {
+  return `sdrfu-${conversationId}-${attempt}`
 }
 
 /**
- * Remove any pending follow-up for a conversation. Called when the lead
- * comes back (a customer message arrives) so a stale reminder can't fire;
- * the ensuing SDR reply re-arms reminder #1 from scratch.
+ * Remove all pending follow-ups for a conversation. Called when the lead
+ * comes back (a customer message arrives) so no stale reminder fires; the
+ * ensuing SDR reply re-arms the schedule from scratch.
  */
 export async function cancelFollowUp(
   conversationId: string,
   queueOverride?: Pick<Queue<SdrJobData>, 'getJob'>,
 ): Promise<void> {
   const q = queueOverride ?? getSdrQueue()
-  const existing = await q.getJob(followUpJobId(conversationId))
-  if (existing) await existing.remove().catch(() => undefined)
+  for (let attempt = 1; attempt <= MAX_FOLLOWUP_ATTEMPTS; attempt++) {
+    const existing = await q.getJob(followUpJobId(conversationId, attempt))
+    if (existing) await existing.remove().catch(() => undefined)
+  }
 }
 
 /**
- * Schedule (or reschedule) a follow-up reminder for a conversation.
- * One pending follow-up per conversation: a stable jobId means re-adding
- * replaces the previous one. `delayMinutes` is the gap from now.
+ * Schedule (or reschedule) one follow-up reminder. `delayMinutes` is the
+ * offset from now. Reminders are scheduled up front (one call per attempt)
+ * at the reply — never rescheduled from inside a running follow-up job.
  */
 export async function enqueueFollowUp(
   conversationId: string,
@@ -111,7 +122,7 @@ export async function enqueueFollowUp(
   queueOverride?: Pick<Queue<SdrJobData>, 'getJob' | 'add'>,
 ): Promise<void> {
   const q = queueOverride ?? getSdrQueue()
-  const jobId = followUpJobId(conversationId)
+  const jobId = followUpJobId(conversationId, attempt)
 
   const existing = await q.getJob(jobId)
   if (existing) await existing.remove().catch(() => undefined)

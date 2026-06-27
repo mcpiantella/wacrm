@@ -47,17 +47,19 @@ async function handleJob(conversationId: string): Promise<void> {
     const decision = await decideFromContext(ctx, sdrDeps)
     await executeDecision(execDeps, decision, ctx)
     console.log(`[sdr-worker] ${conversationId} → ${decision.action} (${decision.reason})`)
-    if (
-      decision.action === 'reply' &&
-      ctx.config?.follow_up_enabled &&
-      (ctx.config.follow_up_delays?.length ?? 0) > 0
-    ) {
-      await enqueueFollowUp(
-        conversationId,
-        ctx.conversation.account_id,
-        1,
-        ctx.config.follow_up_delays[0],
-      ).catch((e) => console.error('[sdr-worker] schedule follow-up failed:', e))
+    // Arm all reminders up front (absolute offsets from this reply). Each
+    // has its own jobId, so they don't dedupe against each other and we
+    // never reschedule from inside a running follow-up job.
+    if (decision.action === 'reply' && ctx.config?.follow_up_enabled) {
+      const delays = ctx.config.follow_up_delays ?? []
+      for (let i = 0; i < delays.length; i++) {
+        await enqueueFollowUp(
+          conversationId,
+          ctx.conversation.account_id,
+          i + 1,
+          delays[i],
+        ).catch((e) => console.error('[sdr-worker] schedule follow-up failed:', e))
+      }
     }
   } catch (err) {
     // The decide phase (LLM / transcription) threw — executeDecision never
@@ -84,7 +86,6 @@ async function handleJob(conversationId: string): Promise<void> {
 
 async function handleFollowUp(
   conversationId: string,
-  accountId: string,
   attempt: number,
 ): Promise<void> {
   const supabase = supabaseAdmin()
@@ -111,24 +112,13 @@ async function handleFollowUp(
 
   await executeFollowUp(execDeps, decision, ctx, channel as never, attempt)
   console.log(`[sdr-worker] followup ${conversationId} #${attempt} → ${decision.action}`)
-
-  // Schedule the next reminder when this one was sent and isn't the last.
-  if (decision.action === 'send' && !decision.final) {
-    const delays = ctx.config?.follow_up_delays ?? []
-    const gap = (delays[attempt] ?? 0) - (delays[attempt - 1] ?? 0)
-    if (gap > 0) {
-      await enqueueFollowUp(conversationId, accountId, attempt + 1, gap).catch((e) =>
-        console.error('[sdr-worker] schedule next follow-up failed:', e),
-      )
-    }
-  }
 }
 
 const worker = new Worker<SdrJobData>(
   SDR_QUEUE_NAME,
   async (job) => {
     if (job.data.kind === 'followup') {
-      await handleFollowUp(job.data.conversationId, job.data.accountId, job.data.attempt ?? 1)
+      await handleFollowUp(job.data.conversationId, job.data.attempt ?? 1)
     } else {
       await handleJob(job.data.conversationId)
     }
