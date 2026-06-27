@@ -29,6 +29,22 @@ function noop(reason: string, inboundIds: string[] = []): SdrDecision {
   return { action: 'noop', reason, inboundMessageIds: inboundIds }
 }
 
+/**
+ * Output contract appended to the user-authored system prompt. The core
+ * parses `reply` / `handoff` / `qualification` out of the model's JSON, so
+ * the model must be told that exact shape — the campaign's prompt only
+ * describes the persona, not the wire format. Without this the model returns
+ * arbitrary JSON (no `reply` key) and every turn degrades to a noop.
+ */
+const OUTPUT_CONTRACT = `
+
+# Formato da resposta (OBRIGATÓRIO)
+Responda SOMENTE com um único objeto JSON válido, sem nenhum texto fora dele, exatamente neste formato:
+{"reply": "<sua próxima mensagem para o lead, em português>", "handoff": false, "qualification": {}}
+- "reply": OBRIGATÓRIO — o texto que será enviado ao lead no WhatsApp. Nunca deixe vazio.
+- "handoff": true apenas se o lead pediu falar com um humano ou se você não consegue mais ajudar; senão false.
+- "qualification": objeto com o que você já descobriu sobre o lead (ex.: intenção, orçamento, prazo), ou {} se ainda nada.`
+
 /** The latest contiguous run of unanswered customer messages (the batch). */
 function pendingCustomerMessages(messages: SdrMessage[]): SdrMessage[] {
   const out: SdrMessage[] = []
@@ -132,7 +148,7 @@ export async function decideFromContext(
   // Ask the LLM.
   const llmMessages = toLlmMessages(messages, transcripts)
   const result = await deps.chat({
-    system: config.system_prompt ?? '',
+    system: `${config.system_prompt ?? ''}${OUTPUT_CONTRACT}`,
     messages: llmMessages,
     model: config.model ?? undefined,
     json: true,
@@ -142,7 +158,12 @@ export async function decideFromContext(
   try {
     parsed = extractJson<LlmReply>(result.text)
   } catch {
-    return noop('model output was not valid JSON', inboundIds)
+    return {
+      action: 'noop',
+      reason: 'model output was not valid JSON',
+      inboundMessageIds: inboundIds,
+      raw: result.text,
+    }
   }
 
   if (parsed.handoff) {
@@ -158,7 +179,12 @@ export async function decideFromContext(
 
   const replyText = (parsed.reply ?? '').trim()
   if (!replyText) {
-    return noop('model returned an empty reply', inboundIds)
+    return {
+      action: 'noop',
+      reason: 'model returned an empty reply',
+      inboundMessageIds: inboundIds,
+      raw: parsed,
+    }
   }
 
   return {
