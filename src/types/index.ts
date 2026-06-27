@@ -144,6 +144,9 @@ export interface ContactNote {
 
 export type ConversationStatus = 'open' | 'pending' | 'closed';
 
+/** Whether the AI SDR is driving this thread (see sdr_configs / the worker). */
+export type SdrStatus = 'off' | 'active' | 'handoff';
+
 export interface Conversation {
   id: string;
   user_id: string;
@@ -156,6 +159,10 @@ export interface Conversation {
   created_at: string;
   updated_at: string;
   contact?: Contact;
+  /** AI SDR state for this thread; 'off' (or absent) when no SDR is wired. */
+  sdr_status?: SdrStatus;
+  /** Campaign whose sdr_config drives the SDR here (needed to (re)activate). */
+  broadcast_id?: string | null;
 }
 
 export type SenderType = 'customer' | 'agent' | 'bot';

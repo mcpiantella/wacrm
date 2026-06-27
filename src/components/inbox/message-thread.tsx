@@ -15,6 +15,7 @@ import type {
   ConversationStatus,
   MessageTemplate,
   Profile,
+  SdrStatus,
 } from "@/types";
 import {
   MessageSquare,
@@ -46,6 +47,7 @@ import {
 } from "./message-composer";
 import { deleteAccountMedia } from "@/lib/storage/upload-media";
 import { TemplatePicker } from "./template-picker";
+import { SdrThreadControl } from "./sdr-thread-control";
 import { buildReplyPreview } from "./reply-quote";
 import { toast } from "sonner";
 
@@ -74,6 +76,13 @@ interface MessageThreadProps {
     conversationId: string,
     assignedAgentId: string | null,
   ) => void;
+  /**
+   * Fired when the agent flips the AI SDR on this thread (take over →
+   * 'handoff', hand back → 'active'). The page updates the active
+   * conversation so the control reflects the new state. Optional so
+   * existing callers keep working.
+   */
+  onSdrChange?: (conversationId: string, status: SdrStatus) => void;
   /**
    * On mobile, the thread is shown full-screen with the conversation list
    * hidden. This callback lets the page deselect the active conversation
@@ -159,6 +168,7 @@ export function MessageThread({
   onUpdateMessage,
   onStatusChange,
   onAssignChange,
+  onSdrChange,
   onBack,
   resyncToken = 0,
   onRefresh,
@@ -903,6 +913,17 @@ export function MessageThread({
                 className={cn("h-3.5 w-3.5", isRefreshing && "animate-spin")}
               />
             </button>
+          )}
+
+          {/* AI SDR control — take over / hand back. Only renders when the
+              SDR is wired to this thread. */}
+          {conversation && onSdrChange && (
+            <SdrThreadControl
+              conversationId={conversation.id}
+              sdrStatus={conversation.sdr_status}
+              broadcastId={conversation.broadcast_id}
+              onChange={(status) => onSdrChange(conversation.id, status)}
+            />
           )}
 
           {/* Status dropdown */}

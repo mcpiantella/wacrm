@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import type { Conversation, Message, Contact, ConversationStatus } from "@/types";
+import type { Conversation, Message, Contact, ConversationStatus, SdrStatus } from "@/types";
 import { useRealtime } from "@/hooks/use-realtime";
 import { ConversationList } from "@/components/inbox/conversation-list";
 import { MessageThread } from "@/components/inbox/message-thread";
@@ -543,6 +543,18 @@ export default function InboxPage() {
     [activeConversation]
   );
 
+  const handleSdrChange = useCallback(
+    (conversationId: string, sdr_status: SdrStatus) => {
+      setConversations((prev) =>
+        prev.map((c) => (c.id === conversationId ? { ...c, sdr_status } : c))
+      );
+      if (activeConversation?.id === conversationId) {
+        setActiveConversation((prev) => (prev ? { ...prev, sdr_status } : prev));
+      }
+    },
+    [activeConversation]
+  );
+
   // On mobile (<lg) we show a SINGLE pane — either the list or the
   // thread — rather than cramming both side-by-side. Selecting a
   // conversation slides the thread in; the thread's back button pops
@@ -607,6 +619,7 @@ export default function InboxPage() {
             onUpdateMessage={handleUpdateMessage}
             onStatusChange={handleStatusChange}
             onAssignChange={handleAssignChange}
+            onSdrChange={handleSdrChange}
             onBack={handleCloseConversation}
             resyncToken={resyncToken}
             onRefresh={handleManualRefresh}
