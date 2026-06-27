@@ -8,7 +8,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { Bot, Loader2 } from 'lucide-react';
+import { Bot, Loader2, Sparkles } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -42,6 +42,8 @@ export function SdrConfigCard({ broadcastId }: { broadcastId: string }) {
   const [config, setConfig] = useState<SdrConfig>(EMPTY);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [briefing, setBriefing] = useState('');
+  const [generating, setGenerating] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -62,6 +64,40 @@ export function SdrConfigCard({ broadcastId }: { broadcastId: string }) {
   useEffect(() => {
     void load();
   }, [load]);
+
+  async function generate() {
+    if (briefing.trim().length < 10) {
+      toast.error('Descreva a campanha com pelo menos 10 caracteres.');
+      return;
+    }
+    setGenerating(true);
+    try {
+      const res = await fetch('/api/sdr/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ briefing: briefing.trim() }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(payload.error || 'Falha ao gerar com IA');
+        return;
+      }
+      const g = payload.config as Partial<SdrConfig>;
+      // Fill the form with the draft — the user reviews and saves.
+      setConfig((c) => ({
+        ...c,
+        system_prompt: g.system_prompt ?? c.system_prompt,
+        qualification_criteria: g.qualification_criteria ?? c.qualification_criteria,
+        handoff_keywords: g.handoff_keywords ?? c.handoff_keywords,
+      }));
+      toast.success('Rascunho gerado — revise e salve.');
+    } catch (err) {
+      console.error('[SdrConfigCard] generate', err);
+      toast.error('Não foi possível alcançar o servidor');
+    } finally {
+      setGenerating(false);
+    }
+  }
 
   async function save() {
     setSaving(true);
@@ -118,6 +154,45 @@ export function SdrConfigCard({ broadcastId }: { broadcastId: string }) {
           When enabled, replies to this campaign are answered by the AI SDR until
           a handoff. Activate it per conversation in the inbox.
         </p>
+
+        {/* AI generator — admins describe the campaign and the model drafts
+            the prompt + criteria + handoff keywords below. */}
+        <RequireRole min="admin">
+          <div className="border-border bg-muted/40 space-y-2 rounded-lg border p-3">
+            <div className="flex items-center gap-2">
+              <Sparkles className="text-primary size-4" />
+              <Label htmlFor="sdr-briefing" className="text-xs font-medium">
+                Gerar com IA
+              </Label>
+            </div>
+            <Textarea
+              id="sdr-briefing"
+              rows={2}
+              placeholder="Descreva a campanha: produto/serviço, objetivo e o que qualificar. Ex.: Imobiliária em SP; quero saber se o lead quer alugar ou comprar, faixa de orçamento e prazo."
+              value={briefing}
+              onChange={(e) => setBriefing(e.target.value)}
+            />
+            <div className="flex justify-end">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={generate}
+                disabled={generating}
+              >
+                {generating ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Sparkles className="size-4" />
+                )}
+                Gerar rascunho
+              </Button>
+            </div>
+            <p className="text-muted-foreground text-[10px]">
+              Preenche os campos abaixo. Revise antes de salvar.
+            </p>
+          </div>
+        </RequireRole>
 
         <div className="space-y-1.5">
           <Label htmlFor="sdr-prompt">System prompt</Label>
