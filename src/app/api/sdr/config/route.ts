@@ -16,7 +16,7 @@ import {
  */
 
 const SELECT =
-  'id, broadcast_id, enabled, system_prompt, qualification_criteria, model, handoff_keywords, max_turns, debounce_seconds'
+  'id, broadcast_id, enabled, system_prompt, qualification_criteria, model, handoff_keywords, max_turns, debounce_seconds, follow_up_enabled, follow_up_delays, cold_tag'
 
 export async function GET(request: Request) {
   try {
@@ -67,6 +67,12 @@ export async function PUT(request: Request) {
 
     const debounce = clampInt(b.debounce_seconds, 12, 5, 60)
     const maxTurns = clampInt(b.max_turns, 20, 1, 200)
+    const followUpDelays = Array.isArray(b.follow_up_delays)
+      ? b.follow_up_delays
+          .map((n) => (typeof n === 'number' ? Math.round(n) : Number(n)))
+          .filter((n) => Number.isFinite(n) && n > 0 && n <= 43200) // ≤ 30 days, minutes
+          .slice(0, 5)
+      : [180, 1440]
     const row = {
       account_id: accountId,
       broadcast_id: broadcastId,
@@ -81,6 +87,9 @@ export async function PUT(request: Request) {
         : [],
       max_turns: maxTurns,
       debounce_seconds: debounce,
+      follow_up_enabled: b.follow_up_enabled === undefined ? true : Boolean(b.follow_up_enabled),
+      follow_up_delays: followUpDelays.length ? followUpDelays : [180, 1440],
+      cold_tag: typeof b.cold_tag === 'string' && b.cold_tag.trim() ? b.cold_tag.trim() : 'lead-frio',
       updated_at: new Date().toISOString(),
     }
 

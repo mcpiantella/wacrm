@@ -26,6 +26,9 @@ interface SdrConfig {
   handoff_keywords: string[];
   max_turns: number;
   debounce_seconds: number;
+  follow_up_enabled: boolean;
+  follow_up_delays: number[];
+  cold_tag: string;
 }
 
 const EMPTY: SdrConfig = {
@@ -36,6 +39,9 @@ const EMPTY: SdrConfig = {
   handoff_keywords: [],
   max_turns: 20,
   debounce_seconds: 12,
+  follow_up_enabled: true,
+  follow_up_delays: [180, 1440],
+  cold_tag: 'lead-frio',
 };
 
 export function SdrConfigCard({ broadcastId }: { broadcastId: string }) {
@@ -270,6 +276,37 @@ export function SdrConfigCard({ broadcastId }: { broadcastId: string }) {
               />
             </div>
           </div>
+        </div>
+
+        <div className="border-border space-y-2 rounded-lg border p-3">
+          <div className="flex items-center justify-between">
+            <Label htmlFor="sdr-followup" className="text-xs font-medium">
+              Follow-up automático
+            </Label>
+            <Switch
+              id="sdr-followup"
+              checked={config.follow_up_enabled}
+              onCheckedChange={(v) => setConfig((c) => ({ ...c, follow_up_enabled: v }))}
+            />
+          </div>
+          <p className="text-muted-foreground text-[11px]">
+            Se o lead parar de responder, o SDR manda lembretes nestes intervalos
+            (horas após a última pergunta) e encerra como frio depois do último.
+          </p>
+          <Input
+            id="sdr-followup-delays"
+            placeholder="3, 24"
+            value={config.follow_up_delays.map((m) => +(m / 60).toFixed(2)).join(', ')}
+            onChange={(e) =>
+              setConfig((c) => ({
+                ...c,
+                follow_up_delays: e.target.value
+                  .split(',')
+                  .map((s) => Math.round(parseFloat(s.trim()) * 60))
+                  .filter((n) => Number.isFinite(n) && n > 0),
+              }))
+            }
+          />
         </div>
 
         <RequireRole min="admin">
