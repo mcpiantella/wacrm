@@ -3,7 +3,7 @@ import { findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe'
 import { runAutomationsForTrigger } from '@/lib/automations/engine'
 import { dispatchInboundToFlows } from '@/lib/flows/engine'
 import { supabaseAdmin } from '@/lib/flows/admin-client'
-import { enqueueSdr } from '@/lib/queue/sdr-queue'
+import { enqueueSdr, cancelFollowUp } from '@/lib/queue/sdr-queue'
 
 /**
  * Provider-agnostic inbound pipeline (S6).
@@ -310,6 +310,9 @@ async function maybeEnqueueSdr(
       .eq('broadcast_id', conversation.broadcast_id)
       .maybeSingle()
     if (!cfg || !cfg.enabled) return
+    // The lead came back — drop any armed follow-up reminder; the SDR reply
+    // this inbound triggers will re-arm reminder #1 from scratch.
+    await cancelFollowUp(conversation.id)
     await enqueueSdr(conversation.id, accountId, cfg.debounce_seconds ?? 12)
   } catch (err) {
     console.error('[sdr] enqueue failed:', err instanceof Error ? err.message : err)

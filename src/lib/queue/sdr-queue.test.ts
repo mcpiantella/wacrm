@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { enqueueSdr, sdrJobId, SDR_QUEUE_NAME } from './sdr-queue'
-import { enqueueFollowUp, followUpJobId } from './sdr-queue'
+import { enqueueFollowUp, followUpJobId, cancelFollowUp } from './sdr-queue'
 
 function fakeQueue() {
   return {
@@ -82,6 +82,23 @@ describe('enqueueFollowUp', () => {
 
   it('derives a hyphen-separated job id (no colon)', () => {
     expect(followUpJobId('abc')).toBe('sdrfu-abc')
+  })
+})
+
+describe('cancelFollowUp', () => {
+  it('removes a pending follow-up job when one exists', async () => {
+    const q = fakeQueue()
+    const remove = vi.fn().mockResolvedValue(undefined)
+    q.getJob.mockResolvedValue({ remove })
+    await cancelFollowUp('conv-1', q)
+    expect(q.getJob).toHaveBeenCalledWith('sdrfu-conv-1')
+    expect(remove).toHaveBeenCalledTimes(1)
+  })
+
+  it('is a no-op when no follow-up is pending', async () => {
+    const q = fakeQueue()
+    q.getJob.mockResolvedValue(null)
+    await expect(cancelFollowUp('conv-1', q)).resolves.toBeUndefined()
   })
 })
 

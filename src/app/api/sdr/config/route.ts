@@ -68,9 +68,17 @@ export async function PUT(request: Request) {
     const debounce = clampInt(b.debounce_seconds, 12, 5, 60)
     const maxTurns = clampInt(b.max_turns, 20, 1, 200)
     const followUpDelays = Array.isArray(b.follow_up_delays)
-      ? b.follow_up_delays
-          .map((n) => (typeof n === 'number' ? Math.round(n) : Number(n)))
-          .filter((n) => Number.isFinite(n) && n > 0 && n <= 43200) // ≤ 30 days, minutes
+      ? Array.from(
+          new Set(
+            b.follow_up_delays
+              .map((n) => (typeof n === 'number' ? Math.round(n) : Number(n)))
+              .filter((n) => Number.isFinite(n) && n > 0 && n <= 43200), // ≤ 30 days, minutes
+          ),
+        )
+          // Reminders must be strictly increasing offsets — the worker derives
+          // each gap as delays[n]-delays[n-1], so an out-of-order entry would
+          // silently drop later reminders. Sort + dedupe to guarantee it.
+          .sort((a, b) => a - b)
           .slice(0, 5)
       : [180, 1440]
     const row = {
@@ -89,7 +97,7 @@ export async function PUT(request: Request) {
       debounce_seconds: debounce,
       follow_up_enabled: b.follow_up_enabled === undefined ? true : Boolean(b.follow_up_enabled),
       follow_up_delays: followUpDelays.length ? followUpDelays : [180, 1440],
-      cold_tag: typeof b.cold_tag === 'string' && b.cold_tag.trim() ? b.cold_tag.trim() : 'lead-frio',
+      cold_tag: typeof b.cold_tag === 'string' && b.cold_tag.trim() ? b.cold_tag.trim().slice(0, 60) : 'lead-frio',
       updated_at: new Date().toISOString(),
     }
 

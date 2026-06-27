@@ -85,6 +85,20 @@ export function followUpJobId(conversationId: string): string {
 }
 
 /**
+ * Remove any pending follow-up for a conversation. Called when the lead
+ * comes back (a customer message arrives) so a stale reminder can't fire;
+ * the ensuing SDR reply re-arms reminder #1 from scratch.
+ */
+export async function cancelFollowUp(
+  conversationId: string,
+  queueOverride?: Pick<Queue<SdrJobData>, 'getJob'>,
+): Promise<void> {
+  const q = queueOverride ?? getSdrQueue()
+  const existing = await q.getJob(followUpJobId(conversationId))
+  if (existing) await existing.remove().catch(() => undefined)
+}
+
+/**
  * Schedule (or reschedule) a follow-up reminder for a conversation.
  * One pending follow-up per conversation: a stable jobId means re-adding
  * replaces the previous one. `delayMinutes` is the gap from now.
