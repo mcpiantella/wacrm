@@ -141,6 +141,10 @@ export const RATE_LIMITS = {
    *  while still bounding accidental abuse from a script run in a
    *  loop or a compromised admin session spamming role flips. */
   adminAction: { limit: 30, windowMs: 60_000 },
+  /** AI-backed contact-import column mapping. One paid LLM call per request;
+   *  20/min per user is far above any real "upload a sheet" cadence while
+   *  bounding a scripted loop from running up OpenAI cost. */
+  aiImport: { limit: 20, windowMs: 60_000 },
   /** Public REST API (`/api/v1/*`), keyed per API key. 120/min ≈ 2
    *  req/s sustained — comfortable for a polling integration or an
    *  automation firing on inbound events, while bounding a runaway

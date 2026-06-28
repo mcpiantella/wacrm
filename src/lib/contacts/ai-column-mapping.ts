@@ -46,9 +46,10 @@ export async function inferColumnMapping(
   const len = headers.length
   const out = {} as ColumnMapping
   for (const f of FIELDS) out[f] = clampIndex(raw[f], len)
-  out.defaultCountry =
-    typeof raw.defaultCountry === 'string' && raw.defaultCountry.trim()
-      ? raw.defaultCountry.trim().toUpperCase().slice(0, 2)
-      : 'BR'
+  // Accept only a 2-letter ISO-2 code; anything else → BR (the normalizer also
+  // falls back to BR for unknown codes, but validate here so the value is sane).
+  const country =
+    typeof raw.defaultCountry === 'string' ? raw.defaultCountry.trim().toUpperCase() : ''
+  out.defaultCountry = /^[A-Z]{2}$/.test(country) ? country : 'BR'
   return out
 }

@@ -17,6 +17,13 @@ describe('normalizeImportedRows', () => {
     expect(rows[0].name).toBe('Ana')
   })
 
+  it('treats a BR national number whose DDD is 55 as national (not E.164)', () => {
+    // 11-digit national mobile in area code 55 — must NOT be mistaken for an
+    // already-prefixed E.164 number; the country code must still be added.
+    const { rows } = normalizeImportedRows([['55988887777', 'Lia']], map())
+    expect(rows[0].phone).toBe('5555988887777')
+  })
+
   it('drops and counts rows with an invalid phone', () => {
     const { rows, invalid } = normalizeImportedRows(
       [['', 'NoPhone'], ['123', 'TooShort'], ['11999990000', 'Ok']],

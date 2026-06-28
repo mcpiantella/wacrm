@@ -2,9 +2,27 @@ import { normalizePhone } from '@/lib/whatsapp/phone-utils'
 import { parseTagCell, type ParsedContactRow } from './parse-contact-csv'
 import type { ColumnMapping } from './ai-column-mapping'
 
-/** A few common ISO-2 → calling code; falls back to BR/55. */
-const COUNTRY_CALLING_CODES: Record<string, string> = {
-  BR: '55', US: '1', PT: '351', AR: '54', MX: '52', CL: '56', CO: '57', PY: '595', UY: '598',
+/**
+ * ISO-2 → { calling code, national-number length range }. The national range
+ * lets us classify a bare number by length BEFORE trusting a prefix match —
+ * critical because some national numbers legitimately start with the country's
+ * own calling-code digits (e.g. BR area code 55: `55988887777` is a national
+ * mobile, NOT an already-prefixed E.164). Falls back to BR.
+ */
+interface CountryPhone {
+  cc: string
+  national: [number, number]
+}
+const COUNTRY_PHONE: Record<string, CountryPhone> = {
+  BR: { cc: '55', national: [10, 11] },
+  US: { cc: '1', national: [10, 10] },
+  PT: { cc: '351', national: [9, 9] },
+  AR: { cc: '54', national: [10, 11] },
+  MX: { cc: '52', national: [10, 10] },
+  CL: { cc: '56', national: [9, 9] },
+  CO: { cc: '57', national: [10, 10] },
+  PY: { cc: '595', national: [9, 9] },
+  UY: { cc: '598', national: [8, 9] },
 }
 
 export interface NormalizeResult {
@@ -17,12 +35,32 @@ function at(row: string[], idx: number | null): string {
   return idx === null ? '' : (row[idx] ?? '').trim()
 }
 
-/** Digits only; prefix the country calling code if absent. Valid = 11–15 digits. */
+/**
+ * Digits only, classified by national length FIRST, then E.164:
+ *  - length in the country's national range → it's a national number → prepend cc.
+ *  - else starts with cc AND (length − cc) in the national range → already E.164 → keep.
+ *  - else → unrecognized shape → invalid.
+ * Final value must be 11–15 digits.
+ */
 function normalizePhoneWithCountry(raw: string, country: string): string | null {
   const digits = normalizePhone(raw)
   if (!digits) return null
-  const cc = COUNTRY_CALLING_CODES[country] ?? '55'
-  const full = digits.startsWith(cc) && digits.length >= 11 ? digits : `${cc}${digits}`
+  const info = COUNTRY_PHONE[country] ?? COUNTRY_PHONE.BR
+  const [nmin, nmax] = info.national
+  const cc = info.cc
+
+  let full: string
+  if (digits.length >= nmin && digits.length <= nmax) {
+    full = `${cc}${digits}` // national → add the country code
+  } else if (
+    digits.startsWith(cc) &&
+    digits.length - cc.length >= nmin &&
+    digits.length - cc.length <= nmax
+  ) {
+    full = digits // already in E.164 (country code + national)
+  } else {
+    return null
+  }
   return full.length >= 11 && full.length <= 15 ? full : null
 }
 
