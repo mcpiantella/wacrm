@@ -223,21 +223,32 @@ async function findOrCreateTag(
   name: string,
 ): Promise<string | null> {
   const { supabase } = deps
-  const { data: existing } = await supabase
-    .from('tags')
-    .select('id')
-    .eq('account_id', accountId)
-    .ilike('name', name)
-    .maybeSingle()
+  const lookup = () =>
+    supabase
+      .from('tags')
+      .select('id')
+      .eq('account_id', accountId)
+      .ilike('name', name)
+      .maybeSingle()
+
+  const { data: existing } = await lookup()
   if (existing?.id) return existing.id as string
 
   // `tags` has NOT NULL user_id + account_id; color defaults in the DB.
-  const { data: created } = await supabase
+  const { data: created, error } = await supabase
     .from('tags')
     .insert({ account_id: accountId, user_id: userId, name, color: '#64748b' })
     .select('id')
     .single()
-  return (created?.id as string) ?? null
+  if (created?.id) return created.id as string
+
+  // Lost a race against a concurrent cold-close — the unique index
+  // (account_id, lower(name)) rejected the duplicate. Re-select the winner.
+  if (error) {
+    const { data: raced } = await lookup()
+    return (raced?.id as string) ?? null
+  }
+  return null
 }
 
 async function logFollowUpRun(
