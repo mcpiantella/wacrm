@@ -8,10 +8,10 @@ import {
   isUniqueViolation,
   normalizeKey,
 } from '@/lib/contacts/dedupe';
-import {
-  parseContactCsv,
-  type ParsedContactRow,
-} from '@/lib/contacts/parse-contact-csv';
+import { type ParsedContactRow } from '@/lib/contacts/parse-contact-csv';
+import { parseSheet } from '@/lib/contacts/parse-sheet';
+import { normalizeImportedRows } from '@/lib/contacts/normalize-imported-rows';
+import type { ColumnMapping } from '@/lib/contacts/ai-column-mapping';
 import {
   assignImportedContactTags,
   resolveImportTagIds,
@@ -134,6 +134,11 @@ export function ImportModal({
   const [tagColorByKey, setTagColorByKey] = useState<Map<string, string>>(
     new Map()
   );
+  const [headers, setHeaders] = useState<string[]>([]);
+  const [rawRows, setRawRows] = useState<string[][]>([]);
+  const [mapping, setMapping] = useState<ColumnMapping | null>(null);
+  const [invalidCount, setInvalidCount] = useState(0);
+  const [mappingLoading, setMappingLoading] = useState(false);
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<{
     imported: number;
@@ -148,6 +153,10 @@ export function ImportModal({
     setHasTagsColumn(false);
     setHasCompanyColumn(false);
     setTagColorByKey(new Map());
+    setHeaders([]);
+    setRawRows([]);
+    setMapping(null);
+    setInvalidCount(0);
     setResult(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
   }
@@ -160,47 +169,82 @@ export function ImportModal({
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const selected = e.target.files?.[0];
     if (!selected) return;
-
     setFile(selected);
     setResult(null);
+    setMappingLoading(true);
 
-    const text = await selected.text();
-    const {
-      rows,
-      hasTagsColumn: csvHasTags,
-      hasCompanyColumn: csvHasCompany,
-    } = parseContactCsv(text);
-
-    if (rows.length === 0) {
-      toast.error(
-        'No valid rows found. Ensure CSV has a "phone" column header.'
-      );
-      setParsedRows([]);
-      setHasTagsColumn(false);
-      setHasCompanyColumn(false);
-      setTagColorByKey(new Map());
-      return;
-    }
-
-    setParsedRows(rows);
-    setHasTagsColumn(csvHasTags);
-    setHasCompanyColumn(csvHasCompany);
-
-    if (csvHasTags && accountId) {
-      const { data: tags } = await supabase
-        .from('tags')
-        .select('name, color')
-        .eq('account_id', accountId);
-
-      const colors = new Map<string, string>();
-      for (const tag of tags ?? []) {
-        const key = tag.name.trim().toLowerCase();
-        if (!colors.has(key)) colors.set(key, tag.color);
+    try {
+      const buf = await selected.arrayBuffer();
+      const { headers: hdrs, rows } = parseSheet(buf);
+      if (hdrs.length === 0 || rows.length === 0) {
+        toast.error('Planilha vazia ou ilegível.');
+        return;
       }
-      setTagColorByKey(colors);
-    } else {
-      setTagColorByKey(new Map());
+      const capped = rows.slice(0, 10000);
+      if (rows.length > 10000) {
+        toast.warning('Planilha grande — importando as primeiras 10.000 linhas.');
+      }
+      setHeaders(hdrs);
+      setRawRows(capped);
+
+      // Ask the AI for a column mapping (one call); fall back on failure.
+      let map: ColumnMapping;
+      try {
+        const res = await fetch('/api/contacts/import/map', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ headers: hdrs, sample: capped.slice(0, 20) }),
+        });
+        if (!res.ok) throw new Error(String(res.status));
+        map = (await res.json()).mapping as ColumnMapping;
+      } catch {
+        toast.warning('Mapeamento automático indisponível — usando os nomes das colunas.');
+        map = fallbackMapping(hdrs);
+      }
+      applyMapping(map, capped);
+      await loadTagColors();
+    } finally {
+      setMappingLoading(false);
     }
+  }
+
+  // Header-name fallback (legacy behaviour) when the AI call fails.
+  function fallbackMapping(hdrs: string[]): ColumnMapping {
+    const idx = (name: string) =>
+      hdrs.findIndex((h) => h.trim().toLowerCase() === name);
+    const orNull = (i: number) => (i === -1 ? null : i);
+    return {
+      phone: orNull(idx('phone')),
+      name: orNull(idx('name')),
+      email: orNull(idx('email')),
+      company: orNull(idx('company')),
+      tags: orNull(idx('tags')),
+      defaultCountry: 'BR',
+    };
+  }
+
+  // Run the deterministic normalizer for the current mapping + rows.
+  function applyMapping(map: ColumnMapping, rows: string[][]) {
+    setMapping(map);
+    const { rows: normalized, invalid } = normalizeImportedRows(rows, map);
+    setParsedRows(normalized);
+    setHasTagsColumn(map.tags !== null);
+    setHasCompanyColumn(map.company !== null);
+    setInvalidCount(invalid);
+  }
+
+  async function loadTagColors() {
+    if (!accountId) return;
+    const { data: tags } = await supabase
+      .from('tags')
+      .select('name, color')
+      .eq('account_id', accountId);
+    const colors = new Map<string, string>();
+    for (const tag of tags ?? []) {
+      const key = tag.name.trim().toLowerCase();
+      if (!colors.has(key)) colors.set(key, tag.color);
+    }
+    setTagColorByKey(colors);
   }
 
   async function handleImport() {
@@ -478,13 +522,56 @@ export function ImportModal({
           <input
             ref={fileInputRef}
             type="file"
-            accept=".csv,text/csv"
+            accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             onChange={handleFileChange}
             className="hidden"
           />
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-6 py-4">
+          {mapping && !result && (
+            <div className="border-border space-y-2 rounded-lg border p-3 text-xs">
+              <p className="text-muted-foreground">
+                Confira o mapeamento das colunas (a IA preencheu). Telefone é
+                obrigatório.
+              </p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {(['phone', 'name', 'email', 'company', 'tags'] as const).map(
+                  (field) => (
+                    <label
+                      key={field}
+                      className="flex items-center justify-between gap-2"
+                    >
+                      <span className="capitalize">{field}</span>
+                      <select
+                        className="border-border bg-background rounded-md border px-2 py-1"
+                        value={mapping[field] ?? ''}
+                        onChange={(ev) => {
+                          const v =
+                            ev.target.value === ''
+                              ? null
+                              : Number(ev.target.value);
+                          applyMapping({ ...mapping, [field]: v }, rawRows);
+                        }}
+                      >
+                        <option value="">— nenhuma —</option>
+                        {headers.map((h, i) => (
+                          <option key={i} value={i}>
+                            {h || `Coluna ${i + 1}`}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )
+                )}
+              </div>
+              {invalidCount > 0 && (
+                <p className="text-amber-500">
+                  {invalidCount} linha(s) sem telefone válido serão ignoradas.
+                </p>
+              )}
+            </div>
+          )}
           {preview.length > 0 && !result && (
             <div className="space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -632,7 +719,12 @@ export function ImportModal({
           {!result && (
             <Button
               type="button"
-              disabled={parsedRows.length === 0 || importing}
+              disabled={
+                parsedRows.length === 0 ||
+                importing ||
+                mappingLoading ||
+                mapping?.phone == null
+              }
               onClick={handleImport}
               className="bg-primary hover:bg-primary/90 text-primary-foreground"
             >
