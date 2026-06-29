@@ -5,6 +5,7 @@ import { decrypt } from '@/lib/whatsapp/encryption'
 import { getAccountCloudConfig } from '@/lib/whatsapp/channel/resolve'
 import type { SendTimeParams } from '@/lib/whatsapp/template-send-builder'
 import { isMessageTemplate } from '@/lib/whatsapp/template-row-guard'
+import { requireDispatch } from '@/lib/billing/require-entitlement'
 import {
   sanitizePhoneForMeta,
   isValidE164,
@@ -96,6 +97,10 @@ export async function POST(request: Request) {
         { status: 403 },
       )
     }
+
+    // Billing gate: blocked accounts can't launch campaigns.
+    const billingBlocked = await requireDispatch(supabase, accountId)
+    if (billingBlocked) return billingBlocked
 
     const body = await request.json()
     const {

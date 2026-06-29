@@ -9,6 +9,7 @@ import {
 import { decrypt } from '@/lib/whatsapp/encryption'
 import { getAccountCloudConfig } from '@/lib/whatsapp/channel/resolve'
 import { supabaseAdmin } from '@/lib/flows/admin-client'
+import { requireDispatch } from '@/lib/billing/require-entitlement'
 import {
   sanitizePhoneForMeta,
   isValidE164,
@@ -62,6 +63,10 @@ export async function POST(request: Request) {
         { status: 403 },
       )
     }
+
+    // Billing gate: blocked (trial expired / past_due / canceled) accounts can't send.
+    const billingBlocked = await requireDispatch(supabase, accountId)
+    if (billingBlocked) return billingBlocked
 
     const body = await request.json()
     const {

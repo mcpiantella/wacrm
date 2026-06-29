@@ -7,6 +7,10 @@ import {
 import { encrypt } from '@/lib/whatsapp/encryption'
 import { channelCapabilities } from '@/lib/whatsapp/channel/capabilities'
 import type { Provider } from '@/lib/whatsapp/channel/types'
+import { supabaseAdmin } from '@/lib/flows/admin-client'
+import { getAccountEntitlements } from '@/lib/billing/load-entitlements'
+import { billingErrorResponse } from '@/lib/billing/errors'
+import { recordBillingEvent } from '@/lib/billing/events'
 
 /**
  * /api/channels — list + create WhatsApp channels (the S7 channels UI
@@ -150,6 +154,19 @@ export async function POST(request: Request) {
       }
       saved = data
     } else {
+      // Billing: a NEW number counts against the plan's max_numbers.
+      const ent = await getAccountEntitlements(supabase, accountId)
+      if (!ent.canDispatch) return billingErrorResponse('billing_blocked')
+      const { count } = await supabase
+        .from('channels')
+        .select('id', { count: 'exact', head: true })
+      if ((count ?? 0) >= ent.limits.max_numbers) {
+        await recordBillingEvent(supabaseAdmin(), accountId, 'channel_limit_reached', {
+          limit: ent.limits.max_numbers,
+        })
+        return billingErrorResponse('channel_limit_reached')
+      }
+
       const { data, error } = await supabase
         .from('channels')
         .insert({
