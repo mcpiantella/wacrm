@@ -77,3 +77,11 @@ export interface SdrStats {
   /** Leads closed cold (action='cold'). */
   cold: number
 }
+
+/** First-run setup progress (which core pieces the account has configured). */
+export interface OnboardingState {
+  hasChannel: boolean
+  hasContacts: boolean
+  hasBroadcast: boolean
+  hasSdr: boolean
+}

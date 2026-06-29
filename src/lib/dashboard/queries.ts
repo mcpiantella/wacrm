@@ -16,6 +16,7 @@ import type {
   ResponseTimeBucket,
   ResponseTimeSummary,
   SdrStats,
+  OnboardingState,
 } from './types'
 
 // ------------------------------------------------------------
@@ -425,5 +426,26 @@ export async function loadSdrStats(db: DB): Promise<SdrStats> {
     followUps: followUps.count ?? 0,
     handoffs: handoffs.count ?? 0,
     cold: cold.count ?? 0,
+  }
+}
+
+// --- 7. Onboarding progress -------------------------------------------
+
+/**
+ * Which first-run setup steps the account has completed. RLS scopes each
+ * table to the caller's account; head-only existence counts (no rows).
+ */
+export async function loadOnboarding(db: DB): Promise<OnboardingState> {
+  const [channels, contacts, broadcasts, sdr] = await Promise.all([
+    db.from('channels').select('id', { count: 'exact', head: true }),
+    db.from('contacts').select('id', { count: 'exact', head: true }),
+    db.from('broadcasts').select('id', { count: 'exact', head: true }),
+    db.from('sdr_configs').select('id', { count: 'exact', head: true }).eq('enabled', true),
+  ])
+  return {
+    hasChannel: (channels.count ?? 0) > 0,
+    hasContacts: (contacts.count ?? 0) > 0,
+    hasBroadcast: (broadcasts.count ?? 0) > 0,
+    hasSdr: (sdr.count ?? 0) > 0,
   }
 }

@@ -22,6 +22,7 @@ import {
   loadPipelineDonut,
   loadResponseTime,
   loadSdrStats,
+  loadOnboarding,
 } from '@/lib/dashboard/queries'
 import type {
   ActivityItem,
@@ -30,6 +31,7 @@ import type {
   PipelineDonutData,
   ResponseTimeSummary,
   SdrStats,
+  OnboardingState,
 } from '@/lib/dashboard/types'
 
 import { MetricCard } from '@/components/dashboard/metric-card'
@@ -39,6 +41,7 @@ import { ConversationsChart } from '@/components/dashboard/conversations-chart'
 import { PipelineDonut } from '@/components/dashboard/pipeline-donut'
 import { ResponseTimeChart } from '@/components/dashboard/response-time-chart'
 import { ActivityFeed } from '@/components/dashboard/activity-feed'
+import { OnboardingChecklist } from '@/components/dashboard/onboarding-checklist'
 
 type RangeDays = 7 | 30 | 90
 
@@ -69,6 +72,8 @@ export default function DashboardPage() {
 
   const [sdr, setSdr] = useState<SdrStats | null>(null)
   const [sdrLoading, setSdrLoading] = useState(true)
+
+  const [onboarding, setOnboarding] = useState<OnboardingState | null>(null)
 
   const loadAll = useCallback(() => {
     const db = createClient()
@@ -108,6 +113,10 @@ export default function DashboardPage() {
       .then((s) => setSdr(s))
       .catch((err) => console.error('[dashboard] sdr stats failed:', err))
       .finally(() => setSdrLoading(false))
+
+    void loadOnboarding(db)
+      .then((o) => setOnboarding(o))
+      .catch((err) => console.error('[dashboard] onboarding failed:', err))
   }, [])
 
   useEffect(() => {
@@ -141,6 +150,9 @@ export default function DashboardPage() {
           Live analytics across conversations, contacts, deals, broadcasts, and automations.
         </p>
       </div>
+
+      {/* First-run checklist (self-hides once all steps are done) */}
+      {onboarding && <OnboardingChecklist state={onboarding} />}
 
       {/* Metric cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
