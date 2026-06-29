@@ -20,6 +20,9 @@ import { chatComplete } from '@/lib/ai/chat'
 import { getTranscriber } from '@/lib/ai/transcription/factory'
 import { loadSdrContext, decideFromContext } from '@/lib/sdr/core'
 import { decideFollowUp } from '@/lib/sdr/followup'
+import { consumeAiMessageOrThrow } from '@/lib/billing/quota'
+import { BillingError } from '@/lib/billing/errors'
+import { recordBillingEvent } from '@/lib/billing/events'
 import { executeDecision, executeFollowUp, CHANNEL_COLUMNS, type ExecuteDeps } from '@/lib/sdr/execute'
 import { createChannel } from '@/lib/whatsapp/channel/factory'
 import type { ChannelRow } from '@/lib/whatsapp/channel/types'
@@ -45,6 +48,33 @@ async function handleJob(conversationId: string): Promise<void> {
   }
   try {
     const decision = await decideFromContext(ctx, sdrDeps)
+
+    // Billing: a reply is a billable AI message — consume quota atomically
+    // first. If the account is blocked or out of quota, skip the send.
+    if (decision.action === 'reply') {
+      try {
+        await consumeAiMessageOrThrow(supabaseAdmin(), ctx.conversation.account_id)
+      } catch (err) {
+        if (err instanceof BillingError) {
+          await recordBillingEvent(supabaseAdmin(), ctx.conversation.account_id, 'ai_quota_blocked', {
+            code: err.code,
+            conversation_id: conversationId,
+          })
+          await supabaseAdmin().from('sdr_runs').insert({
+            account_id: ctx.conversation.account_id,
+            conversation_id: ctx.conversation.id,
+            broadcast_id: ctx.conversation.broadcast_id,
+            inbound_message_ids: [],
+            action: 'noop',
+            error: `billing: ${err.code}`,
+          })
+          console.log(`[sdr-worker] ${conversationId} → blocked (${err.code})`)
+          return
+        }
+        throw err
+      }
+    }
+
     await executeDecision(execDeps, decision, ctx)
     console.log(`[sdr-worker] ${conversationId} → ${decision.action} (${decision.reason})`)
     // Arm all reminders up front (absolute offsets from this reply). Each
