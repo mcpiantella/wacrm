@@ -40,6 +40,22 @@ describe('asaasGateway.createCheckout', () => {
       accountId: 'a', planId: 'pro', value: 1, cycle: 'MONTHLY', successUrl: 's', cancelUrl: 'c', expiredUrl: 'e',
     })).rejects.toMatchObject({ code: 'gateway_error' })
   })
+  it('rejects when the response is missing the checkout url', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ id: 'chk_1' }) }))
+    await expect(asaasGateway.createCheckout({
+      accountId: 'a', planId: 'pro', value: 1, cycle: 'MONTHLY', successUrl: 's', cancelUrl: 'c', expiredUrl: 'e',
+    })).rejects.toMatchObject({ code: 'gateway_error' })
+  })
+  it('extracts gatewayCustomerId from a nested customer object', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true, status: 200,
+      json: async () => ({ id: 'chk_1', link: 'https://asaas/checkout/chk_1', customer: { id: 'cus_9' } }),
+    }))
+    const res = await asaasGateway.createCheckout({
+      accountId: 'a', planId: 'pro', value: 1, cycle: 'MONTHLY', successUrl: 's', cancelUrl: 'c', expiredUrl: 'e',
+    })
+    expect(res.gatewayCustomerId).toBe('cus_9')
+  })
 })
 
 describe('asaasGateway.parseWebhook', () => {

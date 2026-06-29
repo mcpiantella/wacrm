@@ -38,10 +38,13 @@ export const asaasGateway: BillingGateway = {
       ...(input.customer ? { customerData: { name: input.customer.name, email: input.customer.email } } : {}),
     }
     const json = await asaasFetch('/checkouts', { method: 'POST', body: JSON.stringify(body) })
+    const id = json.id
+    const url = json.link ?? json.url ?? json.checkoutUrl
+    if (!id || !url) throw new BillingError('gateway_error', 'Asaas checkout response missing id/url')
     return {
-      checkoutId: String(json.id),
-      checkoutUrl: String(json.link ?? json.url ?? json.checkoutUrl),
-      gatewayCustomerId: json.customer ? String(json.customer) : undefined,
+      checkoutId: String(id),
+      checkoutUrl: String(url),
+      gatewayCustomerId: extractCustomerId(json.customer),
     }
   },
 
@@ -62,6 +65,16 @@ export const asaasGateway: BillingGateway = {
     if (CANCELED.has(body.event)) return { type: 'subscription_canceled', gatewaySubscriptionId: sub }
     return null
   },
+}
+
+/** Asaas may return `customer` as a string id or as `{ id: '...' }`. */
+function extractCustomerId(customer: unknown): string | undefined {
+  if (typeof customer === 'string' && customer) return customer
+  if (customer && typeof customer === 'object' && 'id' in customer) {
+    const id = (customer as { id?: unknown }).id
+    return typeof id === 'string' ? id : undefined
+  }
+  return undefined
 }
 
 /** Constant-time string compare (avoids leaking via early return). */
