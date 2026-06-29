@@ -42,6 +42,38 @@ function Bar({ label, used, max }: { label: string; used: number; max: number })
 export function BillingSettings() {
   const { accountId } = useAuth();
   const [v, setV] = useState<View | null>(null);
+  const [plans, setPlans] = useState<{ id: string; name: string; price_cents: number }[]>([]);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  useEffect(() => {
+    const supabase = createClient();
+    void supabase
+      .from('plans')
+      .select('id, name, price_cents, is_custom, sort')
+      .eq('is_custom', false)
+      .gt('price_cents', 0)
+      .order('sort')
+      .then(({ data }) => setPlans((data as typeof plans) ?? []));
+  }, []);
+
+  async function subscribe(planId: string) {
+    setBusy(planId);
+    try {
+      const res = await fetch('/api/billing/checkout', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ planId }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.checkoutUrl) {
+        toast.error(json?.error?.message ?? 'Falha ao iniciar o checkout.');
+        return;
+      }
+      window.location.href = json.checkoutUrl;
+    } finally {
+      setBusy(null);
+    }
+  }
 
   useEffect(() => {
     if (!accountId) return;
@@ -84,7 +116,24 @@ export function BillingSettings() {
         <Bar label="Contatos" used={v.contacts} max={v.plan.max_contacts} />
         <Bar label="Mensagens de IA (ciclo)" used={ent.aiUsed} max={v.plan.max_ai_messages} />
       </div>
-      <Button onClick={() => toast.info('Checkout em breve.')}>Assinar / Fazer upgrade</Button>
+      <div className="grid gap-3 sm:grid-cols-3">
+        {plans.map((pl) => (
+          <div key={pl.id} className="border-border bg-card flex flex-col gap-2 rounded-xl border p-4">
+            <div className="text-sm font-semibold text-foreground">{pl.name}</div>
+            <div className="text-2xl font-bold text-foreground">
+              R$ {(pl.price_cents / 100).toLocaleString('pt-BR')}
+              <span className="text-xs font-normal text-muted-foreground">/mês</span>
+            </div>
+            <Button
+              className="mt-2"
+              disabled={busy !== null || pl.id === v.plan.id}
+              onClick={() => subscribe(pl.id)}
+            >
+              {pl.id === v.plan.id ? 'Plano atual' : busy === pl.id ? 'Abrindo…' : 'Assinar'}
+            </Button>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
