@@ -12,6 +12,7 @@ import {
   Pencil,
   RotateCcw,
   Upload,
+  Sparkles,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import {
@@ -133,6 +134,42 @@ export function TemplateManager() {
   const [submitting, setSubmitting] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [form, setForm] = useState<TemplateFormData>(emptyForm);
+  const [aiBriefing, setAiBriefing] = useState('');
+  const [aiGenerating, setAiGenerating] = useState(false);
+
+  async function generateWithAi() {
+    if (aiBriefing.trim().length < 10) {
+      toast.error('Descreva o objetivo da mensagem com pelo menos 10 caracteres.');
+      return;
+    }
+    setAiGenerating(true);
+    try {
+      const res = await fetch('/api/whatsapp/templates/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ briefing: aiBriefing.trim() }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(payload.error || 'Falha ao gerar com IA');
+        return;
+      }
+      const t = payload.template as { name?: string; category?: string; body_text?: string };
+      setForm((f) => ({
+        ...f,
+        // Don't overwrite the name on an existing template (it's locked anyway).
+        name: editingId ? f.name : (t.name ?? f.name),
+        category: (t.category as MessageTemplate['category']) ?? f.category,
+        body_text: t.body_text ?? f.body_text,
+      }));
+      toast.success('Rascunho gerado — revise e ajuste antes de enviar.');
+    } catch (err) {
+      console.error('[template-manager] generate', err);
+      toast.error('Não foi possível alcançar o servidor');
+    } finally {
+      setAiGenerating(false);
+    }
+  }
   // Non-null when the dialog is editing an existing row — switches the
   // submit handler from POST /submit to PATCH /[id] and changes the
   // dialog title + CTA. Set to the template id to pre-fill from a row.
@@ -635,6 +672,7 @@ export function TemplateManager() {
           if (!open) {
             setEditingId(null);
             setForm(emptyForm);
+            setAiBriefing('');
           }
         }}
       >
@@ -663,6 +701,31 @@ export function TemplateManager() {
           )}
 
           <div className="space-y-4 py-2">
+            {!editingId && (
+              <div className="border-border bg-muted/40 space-y-2 rounded-lg border p-3">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="text-primary size-4" />
+                  <Label className="text-xs font-medium">Gerar com IA</Label>
+                </div>
+                <Textarea
+                  rows={2}
+                  placeholder="Descreva o objetivo da mensagem. Ex.: Convidar leads para conhecer um lançamento de apartamentos na Zona Sul, tom cordial."
+                  value={aiBriefing}
+                  onChange={(e) => setAiBriefing(e.target.value)}
+                  className="bg-muted border-border text-foreground placeholder:text-muted-foreground"
+                />
+                <div className="flex justify-end">
+                  <Button type="button" size="sm" variant="outline" onClick={generateWithAi} disabled={aiGenerating}>
+                    {aiGenerating ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
+                    Gerar rascunho
+                  </Button>
+                </div>
+                <p className="text-[10px] text-muted-foreground">
+                  Preenche nome, categoria e texto abaixo. Revise antes de enviar para aprovação.
+                </p>
+              </div>
+            )}
+
             <div className="space-y-2">
               <Label className="text-muted-foreground">Template Name</Label>
               <Input

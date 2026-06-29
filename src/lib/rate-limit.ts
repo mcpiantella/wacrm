@@ -145,6 +145,10 @@ export const RATE_LIMITS = {
    *  20/min per user is far above any real "upload a sheet" cadence while
    *  bounding a scripted loop from running up OpenAI cost. */
   aiImport: { limit: 20, windowMs: 60_000 },
+  /** AI generation (SDR config, message-template drafts). One paid LLM call
+   *  per request; 30/min per user covers iterating on a draft while bounding
+   *  scripted abuse of the OpenAI budget. */
+  aiGenerate: { limit: 30, windowMs: 60_000 },
   /** Public REST API (`/api/v1/*`), keyed per API key. 120/min ≈ 2
    *  req/s sustained — comfortable for a polling integration or an
    *  automation firing on inbound events, while bounding a runaway
