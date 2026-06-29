@@ -65,3 +65,15 @@ export interface ActivityItem {
   /** Optional deep-link for the whole row (not all items have a target). */
   href?: string
 }
+
+/** AI SDR activity over a window (counts of sdr_runs by action). */
+export interface SdrStats {
+  /** First replies sent by the SDR (action='reply'). */
+  qualified: number
+  /** Follow-up reminders sent (action='followup'). */
+  followUps: number
+  /** Threads handed to a human (action='handoff'). */
+  handoffs: number
+  /** Leads closed cold (action='cold'). */
+  cold: number
+}

@@ -15,6 +15,7 @@ import type {
   PipelineStageSlice,
   ResponseTimeBucket,
   ResponseTimeSummary,
+  SdrStats,
 } from './types'
 
 // ------------------------------------------------------------
@@ -395,4 +396,34 @@ export async function loadActivity(db: DB, limit = 20): Promise<ActivityItem[]> 
   return items
     .sort((a, b) => (a.at > b.at ? -1 : a.at < b.at ? 1 : 0))
     .slice(0, limit)
+}
+
+// --- 6. AI SDR stats (last 30 days) ------------------------------------
+
+/**
+ * Counts of SDR runs by action over the last 30 days. RLS scopes sdr_runs
+ * to the caller's account. Uses head-only count queries (no rows pulled).
+ */
+export async function loadSdrStats(db: DB): Promise<SdrStats> {
+  const since = daysAgoStart(30).toISOString()
+  const countAction = (action: string) =>
+    db
+      .from('sdr_runs')
+      .select('id', { count: 'exact', head: true })
+      .eq('action', action)
+      .gte('created_at', since)
+
+  const [qualified, followUps, handoffs, cold] = await Promise.all([
+    countAction('reply'),
+    countAction('followup'),
+    countAction('handoff'),
+    countAction('cold'),
+  ])
+
+  return {
+    qualified: qualified.count ?? 0,
+    followUps: followUps.count ?? 0,
+    handoffs: handoffs.count ?? 0,
+    cold: cold.count ?? 0,
+  }
 }

@@ -9,6 +9,10 @@ import {
   UserPlus,
   DollarSign,
   Send,
+  Bot,
+  Bell,
+  UserRound,
+  Snowflake,
 } from 'lucide-react'
 
 import {
@@ -17,6 +21,7 @@ import {
   loadMetrics,
   loadPipelineDonut,
   loadResponseTime,
+  loadSdrStats,
 } from '@/lib/dashboard/queries'
 import type {
   ActivityItem,
@@ -24,6 +29,7 @@ import type {
   MetricsBundle,
   PipelineDonutData,
   ResponseTimeSummary,
+  SdrStats,
 } from '@/lib/dashboard/types'
 
 import { MetricCard } from '@/components/dashboard/metric-card'
@@ -61,6 +67,9 @@ export default function DashboardPage() {
   const [activity, setActivity] = useState<ActivityItem[] | null>(null)
   const [activityLoading, setActivityLoading] = useState(true)
 
+  const [sdr, setSdr] = useState<SdrStats | null>(null)
+  const [sdrLoading, setSdrLoading] = useState(true)
+
   const loadAll = useCallback(() => {
     const db = createClient()
 
@@ -94,6 +103,11 @@ export default function DashboardPage() {
       .then((a) => setActivity(a))
       .catch((err) => console.error('[dashboard] activity failed:', err))
       .finally(() => setActivityLoading(false))
+
+    void loadSdrStats(db)
+      .then((s) => setSdr(s))
+      .catch((err) => console.error('[dashboard] sdr stats failed:', err))
+      .finally(() => setSdrLoading(false))
   }, [])
 
   useEffect(() => {
@@ -177,6 +191,47 @@ export default function DashboardPage() {
             />
           </>
         )}
+      </div>
+
+      {/* AI SDR (last 30 days) */}
+      <div className="space-y-2">
+        <div className="flex items-center gap-2">
+          <Bot className="size-4 text-primary" />
+          <h2 className="text-sm font-semibold text-foreground">AI SDR</h2>
+          <span className="text-xs text-muted-foreground">últimos 30 dias</span>
+        </div>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {sdrLoading || !sdr ? (
+            Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)
+          ) : (
+            <>
+              <MetricCard
+                title="Qualificações"
+                value={sdr.qualified.toLocaleString()}
+                icon={Bot}
+                subtitle="respostas enviadas pelo SDR"
+              />
+              <MetricCard
+                title="Follow-ups"
+                value={sdr.followUps.toLocaleString()}
+                icon={Bell}
+                subtitle="lembretes automáticos"
+              />
+              <MetricCard
+                title="Handoffs"
+                value={sdr.handoffs.toLocaleString()}
+                icon={UserRound}
+                subtitle="passados para humano"
+              />
+              <MetricCard
+                title="Leads frios"
+                value={sdr.cold.toLocaleString()}
+                icon={Snowflake}
+                subtitle="encerrados sem resposta"
+              />
+            </>
+          )}
+        </div>
       </div>
 
       {/* Quick actions */}
