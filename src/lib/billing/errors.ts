@@ -6,6 +6,8 @@ export type BillingErrorCode =
   | 'ai_quota_exceeded'
   | 'contact_limit_reached'
   | 'channel_limit_reached'
+  | 'gateway_error'
+  | 'model_not_allowed'
 
 const STATUS: Record<BillingErrorCode, number> = {
   billing_blocked: 402,
@@ -13,6 +15,8 @@ const STATUS: Record<BillingErrorCode, number> = {
   plan_limit_reached: 403,
   contact_limit_reached: 403,
   channel_limit_reached: 403,
+  gateway_error: 502,
+  model_not_allowed: 400,
 }
 
 const MESSAGES: Record<BillingErrorCode, string> = {
@@ -21,6 +25,8 @@ const MESSAGES: Record<BillingErrorCode, string> = {
   ai_quota_exceeded: 'Cota de mensagens de IA do plano esgotada neste ciclo. Faça upgrade.',
   contact_limit_reached: 'Limite de contatos do plano atingido. Faça upgrade para adicionar mais.',
   channel_limit_reached: 'Limite de números do plano atingido. Faça upgrade para conectar mais.',
+  gateway_error: 'Falha ao comunicar com o gateway de pagamento. Tente novamente.',
+  model_not_allowed: 'O modelo de IA selecionado não está disponível no seu plano.',
 }
 
 export class BillingError extends Error {
