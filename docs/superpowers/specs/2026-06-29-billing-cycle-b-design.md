@@ -1,123 +1,215 @@
 # Billing — Cycle B (Asaas, real checkout) — Design
 
 **Date:** 2026-06-29
-**Status:** approved (design), pending spec review
+**Status:** revised after adversarial review, pending final spec review
 **Depends on:** Cycle A (migration 032, `BillingGateway` interface, entitlements, gating). Cycle B replaces the stub gateway with a real Asaas adapter and turns the placeholder "Assinar" button into a working hosted checkout.
+
+> **Implementation note — verify the live API.** Exact Asaas request/response shapes, endpoint paths, base URLs, and event names below reflect the cited docs as of 2026-06; they MUST be re-verified against the live Asaas documentation during implementation (per the research-first workflow) before any request payload is hard-coded. Treat the snippets here as the intended **flow**, not a frozen contract.
 
 ---
 
-## 1. Decisions (locked in brainstorm)
+## 1. Decisions (locked in brainstorm + review)
 
 | Topic | Decision |
 |---|---|
-| Payment method | **Credit card only** — Asaas auto-charges monthly; webhooks drive the lifecycle (hands-off recurring). |
-| Card collection | **Asaas hosted checkout** — we redirect to Asaas; we never touch card data (no PCI surface). |
+| Payment method | **Credit card only** — recurring, hands-off; webhooks drive the lifecycle. |
+| Card collection | **Asaas Checkout (recurring)** — hosted page collects the card and, on completion, Asaas creates the subscription with automatic monthly charges. We never touch card data (no PCI surface). |
 | Prices (standard plans) | Starter **R$97** · Pro **R$297** · Business **R$697** /month. Trial = free. |
-| AI model exposure | The allowed model set is derived from the **account's plan**, validated server-side. Tenants can never self-select a model outside their plan's allow-list — including via direct API calls. |
-| Standard plan models | Budget tier only: `gpt-5.4-mini` (default), `gpt-4o-mini`, `claude-haiku-4-5`. |
-| Premium models | Only via **custom/enterprise plans** that the operator attaches to an account (expanded `allowed_models`). Not self-serve; priced to cover cost. |
+| AI model exposure | Allowed models derived from the **account's plan** (via capability keys), validated server-side. Tenants can never select a model outside their plan — including via direct API calls. |
+| Standard plan models | Budget tier only (`budget_default` key → `gpt-5.4-mini`, plus `gpt-4o-mini`, `claude-haiku-4-5`). |
+| Premium models | Only via **custom/enterprise plans** the operator attaches (expanded `allowed_model_keys`). Not self-serve; priced to cover cost. |
 
-**Out of scope (Cycle B):** dunning emails, proration on mid-cycle upgrades (upgrade takes effect next cycle / immediate re-checkout), invoices UI, multiple concurrent subscriptions, PIX/boleto, self-serve enterprise checkout.
+**Out of scope (Cycle B):** dunning emails, mid-cycle proration, invoices UI, multiple concurrent subscriptions, PIX/boleto, self-serve enterprise checkout.
 
 ---
 
-## 2. Data model changes (migration 033)
+## 2. Why not `POST /subscriptions` directly
 
-Extend `plans`:
+The first draft created an Asaas subscription via `POST /v3/subscriptions` with `billingType: CREDIT_CARD` and surfaced the "first invoiceUrl" as the checkout link. That is wrong for a hosted-checkout product:
+
+- Asaas's subscription API is a **billing scheduler**: the first charge is created *after* the subscription, reachable only via `GET /v3/subscriptions/{id}/payments` — there is no reliable `checkoutUrl` returned synchronously.
+- The card-subscription endpoint expects **card/holder/token + remoteIp** at creation time — i.e. it validates the card during the call, which defeats "we never touch card data."
+
+Correct primitive: **Asaas Checkout with `chargeTypes:["RECURRENT"]` + `subscription.cycle: MONTHLY`**. The hosted checkout collects the card; on completion Asaas creates the subscription and emits webhooks. (Recurring Payment Link is an alternative but less "SaaS-checkout"; we choose Checkout.)
+
+---
+
+## 3. Data model changes (migration 033)
+
+### 3.1 Extend `plans`
 
 ```sql
 ALTER TABLE plans
-  ADD COLUMN price_cents     INTEGER NOT NULL DEFAULT 0,   -- monthly price, BRL cents
-  ADD COLUMN allowed_models  TEXT[]  NOT NULL DEFAULT ARRAY['gpt-5.4-mini','gpt-4o-mini','claude-haiku-4-5'],
-  ADD COLUMN is_custom       BOOLEAN NOT NULL DEFAULT false; -- enterprise/negotiated, hidden from self-serve checkout
+  ADD COLUMN price_cents       INTEGER NOT NULL DEFAULT 0,                 -- monthly, BRL cents
+  ADD COLUMN allowed_model_keys TEXT[] NOT NULL DEFAULT ARRAY['budget_default'],
+  ADD COLUMN is_custom         BOOLEAN NOT NULL DEFAULT false;             -- enterprise; hidden from self-serve
 
 UPDATE plans SET price_cents = 9700  WHERE id = 'starter';
 UPDATE plans SET price_cents = 29700 WHERE id = 'pro';
 UPDATE plans SET price_cents = 69700 WHERE id = 'business';
--- trial stays price_cents = 0
+-- trial stays price_cents = 0, allowed_model_keys = {budget_default}
 ```
 
-`subscriptions` already has `gateway`, `gateway_customer_id`, `gateway_subscription_id` (Cycle A). No new columns required; Cycle B populates them with `'asaas'` and the real ids.
+Plans reference **capability keys**, not raw provider model strings, so model churn / provider deprecation never requires a data migration. A custom plan (e.g. `id='enterprise_acme'`, `is_custom=true`, `allowed_model_keys = '{budget_default,premium_anthropic}'`, bespoke `price_cents`) is created by the operator and assigned via `subscriptions.plan_id`.
 
-The model allow-list is **read from the plan**, so no per-subscription model column is needed. A custom plan row (e.g. `id='enterprise_acme'`, `is_custom=true`, expanded `allowed_models`, bespoke `price_cents`) is created by the operator and assigned by setting `subscriptions.plan_id`.
+### 3.2 New table `billing_checkouts` (pending checkouts)
+
+A started checkout must **never** mutate the live subscription — otherwise a failed/abandoned upgrade downgrades a paying customer. The pending intent lives in its own table; the subscription only changes when a webhook confirms payment.
+
+```sql
+CREATE TABLE billing_checkouts (
+  id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id              UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  target_plan_id          TEXT NOT NULL REFERENCES plans(id),
+  gateway                 TEXT NOT NULL,
+  gateway_checkout_id     TEXT,
+  gateway_subscription_id TEXT,                     -- filled when the webhook links the subscription
+  status                  TEXT NOT NULL DEFAULT 'started'
+                            CHECK (status IN ('started','completed','expired','failed')),
+  checkout_url            TEXT,
+  created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
+  completed_at            TIMESTAMPTZ
+);
+CREATE INDEX idx_billing_checkouts_account ON billing_checkouts (account_id, target_plan_id, status, created_at DESC);
+```
+
+RLS: members read their own account's rows; writes are service-role (checkout + webhook routes).
+
+### 3.3 Processed webhook events (idempotency)
+
+Real idempotency keyed on the provider event id, not "duplicates are harmless":
+
+```sql
+CREATE TABLE billing_webhook_events (
+  event_id     TEXT PRIMARY KEY,        -- Asaas event/payment id
+  received_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
+
+The webhook handler inserts `event_id` first; a conflict ⇒ already processed ⇒ ack `200` and stop.
+
+`subscriptions` keeps its Cycle-A `gateway`, `gateway_customer_id`, `gateway_subscription_id` columns. No per-subscription model column — the allow-list is read from the plan.
 
 ---
 
-## 3. Asaas adapter (`src/lib/billing/gateway/asaas.ts`)
+## 4. Model registry (`src/lib/ai/model-registry.ts`)
 
-Implements the existing `BillingGateway` interface. No interface change.
+```ts
+export const MODEL_REGISTRY = {
+  budget_default:    { provider: 'openai',    model: 'gpt-5.4-mini' },
+  openai_4o_mini:    { provider: 'openai',    model: 'gpt-4o-mini' },
+  anthropic_haiku:   { provider: 'anthropic', model: 'claude-haiku-4-5' },
+  // premium keys (custom plans only) — concrete models filled at implementation
+  premium_anthropic: { provider: 'anthropic', model: 'claude-sonnet-4-6' },
+} as const;
 
-- **Base URL / auth:** `ASAAS_BASE_URL` (sandbox `https://sandbox.asaas.com/api/v3` vs prod `https://api.asaas.com/v3`) + `ASAAS_API_KEY` header `access_token`.
-- `createCustomer({ accountId, name, email })` → `POST /customers` → returns Asaas `id` as `customerId`. Store on `subscriptions.gateway_customer_id`.
-- `createSubscription({ customerId, planId, method:'card' })` →
-  - `POST /subscriptions` with `billingType: 'CREDIT_CARD'`, `cycle: 'MONTHLY'`, `value` = plan price (reais), `externalReference` = our `account_id`.
-  - Card is **not** sent (hosted checkout): we surface the subscription's first payment **invoiceUrl** (Asaas hosted page) as `checkoutUrl`. Returns `{ subscriptionId, checkoutUrl }`.
-- `cancelSubscription(id)` → `DELETE /subscriptions/{id}`.
-- `parseWebhook(req)` → validates the shared-secret token (`ASAAS_WEBHOOK_TOKEN` via the `asaas-access-token` header), parses the event, maps to our normalized `BillingWebhookEvent`:
+/** Concrete model strings a plan's keys resolve to. */
+export function resolveAllowedModels(keys: string[]): string[] { /* map via registry, dedupe */ }
+```
 
-| Asaas event | Normalized |
+The SDR config column stays a raw `model` string (no change to migration 029). Validation resolves the plan's keys to concrete models and checks membership — decoupling **plan capability** from **provider string**.
+
+---
+
+## 5. Gateway adapter (`src/lib/billing/gateway/asaas.ts`)
+
+Interface change (`gateway/types.ts`): replace the subscription-returns-url shape with a checkout-first one.
+
+```ts
+createCheckout(input: {
+  accountId: string; planId: string; value: number; cycle: 'MONTHLY';
+  successUrl: string; cancelUrl: string; expiredUrl: string;
+  customer?: { customerId?: string; name: string; email?: string };
+}): Promise<{ checkoutId: string; checkoutUrl: string; gatewayCustomerId?: string }>
+cancelSubscription(subscriptionId: string): Promise<void>
+parseWebhook(req: Request): Promise<BillingWebhookEvent | null>
+```
+
+`subscriptionId` is **not** returned at checkout time; it arrives via the webhook once the customer completes payment.
+
+- **Base URL / auth:** sandbox `https://api-sandbox.asaas.com/v3`, prod `https://api.asaas.com/v3`. API key in header `access_token` (not `Authorization: Bearer`). Always send `Content-Type: application/json` and `User-Agent: ZenithSender/<version> (<env>)`.
+- **createCheckout** → `POST /checkouts` (verify path) with `billingTypes:['CREDIT_CARD']`, `chargeTypes:['RECURRENT']`, `subscription:{cycle:'MONTHLY'}`, `value`, `externalReference = account_id`, and the success/cancel/expired callback URLs pointing at `/settings?tab=billing`. Returns the hosted `checkoutUrl`.
+- **parseWebhook** → verify the `asaas-access-token` header (constant-time) against `ASAAS_WEBHOOK_TOKEN`; parse and map (table below); return `null` for ignored events.
+
+`getGateway()` returns the Asaas adapter when `BILLING_GATEWAY === 'asaas'`, else the stub (CI/local stay offline).
+
+### Webhook → normalized status
+
+| Asaas event | Action |
 |---|---|
-| `PAYMENT_CONFIRMED` / `PAYMENT_RECEIVED` | `subscription_active` (with `periodEnd` = paid period end) |
-| `PAYMENT_OVERDUE` | `subscription_past_due` |
-| `SUBSCRIPTION_DELETED` / `PAYMENT_DELETED` | `subscription_canceled` |
-| anything else | `null` (ignored) |
+| `PAYMENT_CONFIRMED` | `active` (activate here — don't wait for funds settlement) |
+| `PAYMENT_RECEIVED` | `active` (idempotent; no-op if already active) |
+| `PAYMENT_OVERDUE` | `past_due` |
+| `PAYMENT_CREDIT_CARD_CAPTURE_REFUSED` | `past_due` |
+| `PAYMENT_REFUNDED` | `canceled` (full refund ends the period) |
+| `PAYMENT_PARTIALLY_REFUNDED` | keep current status; record event only |
+| `PAYMENT_CHARGEBACK_REQUESTED` | `past_due` (immediate) |
+| `PAYMENT_CHARGEBACK_DISPUTE` | `past_due` (immediate) |
+| `PAYMENT_DELETED` | `canceled` |
+| `SUBSCRIPTION_DELETED` | `canceled` |
+| anything else | `null` (ack 200, log) |
 
-`getGateway()` switches to the Asaas adapter when `BILLING_GATEWAY === 'asaas'`, else keeps the stub (so tests and local dev stay offline by default).
+`BillingWebhookEvent` gains the refund/chargeback variants; `mapPgBillingError` / `BillingErrorCode` gain `gateway_error` and `model_not_allowed`.
 
 ---
 
-## 4. API routes
+## 6. API routes
 
 ### `POST /api/billing/checkout`
-Authenticated (account member). Body: `{ planId }`.
-1. Reject if `planId` is unknown, `is_custom`, or `price_cents = 0` (trial/custom not self-serve).
-2. Load/lazily-create the Asaas customer (reuse `gateway_customer_id` if present; else `createCustomer` and persist).
-3. `createSubscription` → persist `gateway='asaas'`, `gateway_subscription_id`, set local status to `past_due` (not yet paid — gating stays blocked until the webhook confirms). Record `billing_event` `checkout_started`.
-4. Return `{ checkoutUrl }`. Frontend redirects.
+Authenticated (account member). Body `{ planId }`.
+1. Reject unknown plan, `is_custom`, or `price_cents = 0` (`400`).
+2. **Idempotency:** if a `started` `billing_checkouts` row exists for `(account_id, target_plan_id)` within the last N minutes, return its `checkout_url` (no new Asaas call).
+3. Reuse `subscriptions.gateway_customer_id` if present; the checkout may also create/resolve the customer.
+4. `createCheckout` → insert a `billing_checkouts` row (`status='started'`, `gateway_checkout_id`, `checkout_url`). **Do not touch `subscriptions`.** Record `billing_event` `checkout_started`.
+5. Return `{ checkoutUrl }`.
 
 ### `POST /api/billing/webhook`
-Public (no session). Verifies `ASAAS_WEBHOOK_TOKEN`. Uses `parseWebhook`; on a normalized event, looks up the subscription by `gateway_subscription_id` and updates:
-- `subscription_active` → `status='active'`, `current_period_end=periodEnd`, clears trial, records `subscription_status_changed`.
-- `subscription_past_due` → `status='past_due'`.
-- `subscription_canceled` → `status='canceled'`.
-Idempotent (safe to receive duplicates — Asaas retries). Always returns `200` quickly so Asaas stops retrying; logs and swallows unknown events.
+Public; verifies `ASAAS_WEBHOOK_TOKEN` (constant-time; mismatch → `401`, logged).
+1. Insert `billing_webhook_events(event_id)`; on conflict → ack `200`, stop (idempotent).
+2. `parseWebhook` → on a normalized event, resolve the target account/subscription:
+   - link via `billing_checkouts.gateway_checkout_id` / `gateway_subscription_id`, marking the checkout `completed` and stamping `gateway_subscription_id` the first time.
+3. Apply the status transition (table §5). On `active`: set `subscriptions.plan_id = target_plan_id`, `status='active'`, `current_period_end` from the confirmed payment, `gateway='asaas'`, clear trial; record `subscription_status_changed`.
+   - **Upgrade safety:** an `active` account stays `active` on its old plan until a payment confirms — only then does `plan_id` move. A `trial`/`free`/never-paid account may sit `past_due`/blocked while awaiting first payment.
+4. Always ack `200` quickly; unknown events logged and ignored.
 
 ### `POST /api/sdr/config` (modify existing)
-Before persisting `model`: load the account's plan `allowed_models`; if `b.model` is set and **not** in that list → `400` `{ error: 'model_not_allowed' }`. Empty/absent `model` stays `null` (worker uses the default). This closes the cost vector for every caller, UI or API.
+Before persisting `model`: load the account's plan `allowed_model_keys`, resolve to concrete models, and require `b.model ∈` that set; else `400 { error: 'model_not_allowed' }`. Absent/empty `model` stays `null` (worker default). Server-side and plan-derived — the single source of truth for every caller.
 
 ---
 
-## 5. Frontend
+## 7. Frontend
 
-- `billing-settings.tsx`: the "Assinar / Fazer upgrade" button calls `POST /api/billing/checkout` for the chosen plan and redirects to `checkoutUrl`. Add a simple plan picker (Starter/Pro/Business cards with price + limits). Custom plans are not shown.
-- After returning from Asaas, the user lands back on `/settings?tab=billing`; status reflects whatever the webhook has already written (may briefly show `past_due` until the webhook arrives — acceptable; the page polls/refetches on focus).
-- `billing-banner.tsx`: already handles `blocked`/trial; `past_due` falls under `blocked` (Cycle A `resolveEntitlements`), so the banner already prompts to pay.
-
----
-
-## 6. Error handling & security
-
-- All Asaas calls wrapped; network/4xx/5xx → mapped to a `BillingError` (`gateway_error`) surfaced as a friendly toast. Never leak Asaas raw errors to the client.
-- Webhook token compared with constant-time check; reject mismatches with `401` (logged).
-- `ASAAS_API_KEY`, `ASAAS_WEBHOOK_TOKEN` are server-only env, validated present at startup when `BILLING_GATEWAY=asaas`.
-- `model_not_allowed` enforcement is server-side and plan-derived — the single source of truth; the UI never sends an unlisted model but is not trusted.
-- Checkout route is account-scoped (RLS + membership); a member can only subscribe their own account.
+- `billing-settings.tsx`: plan picker (Starter/Pro/Business cards: price + limits; custom plans hidden). "Assinar/Upgrade" → `POST /api/billing/checkout` → redirect to `checkoutUrl`.
+- Return URLs land on `/settings?tab=billing`; the page refetches on focus so status reflects whatever the webhook has written (may briefly lag — acceptable).
+- `billing-banner.tsx`: unchanged; `past_due` already falls under `blocked` in `resolveEntitlements`, so it prompts to pay.
 
 ---
 
-## 7. Testing
+## 8. Error handling & security
 
-- **Unit (pure / mocked fetch):** `asaas.ts` — customer/subscription payload shape, `parseWebhook` mapping table (each Asaas event → normalized/null), token rejection. Mock `fetch`, no live calls.
-- **Unit:** allow-list validation in the config route (allowed model passes, unlisted model → 400, custom-plan expanded list passes).
-- **Integration (mocked gateway):** checkout route happy path (creates customer once, persists ids, returns checkoutUrl); webhook route updates status idempotently for each event type.
-- Gateway stays stubbed in CI (`BILLING_GATEWAY` unset) so the suite is offline. A manual sandbox checklist (sandbox key, real test card, observe webhook) covers the live path before prod cutover.
+- All Asaas calls wrapped; network/4xx/5xx → `BillingError('gateway_error')`, friendly toast, never leak raw gateway errors.
+- Webhook token constant-time compare; `event_id` dedupe table for true idempotency.
+- `ASAAS_API_KEY`, `ASAAS_WEBHOOK_TOKEN` server-only; validated present at startup when `BILLING_GATEWAY=asaas`.
+- `model_not_allowed` enforced server-side from the plan; UI never trusted.
+- Checkout route account-scoped (RLS + membership); a member can only subscribe their own account.
 
 ---
 
-## 8. Rollout
+## 9. Testing
 
-1. Migration 033 (prices, allowed_models, is_custom).
-2. Adapter + routes + allow-list enforcement, gateway still stub in prod (`BILLING_GATEWAY` unset) — ships dark.
-3. Configure Asaas **sandbox**, run the manual checklist end-to-end.
-4. Flip `BILLING_GATEWAY=asaas` + prod keys + webhook URL on `zenith-sender` (web). The checkout and webhook routes are web-only; the worker only reads `allowed_models` from the plan, so it needs the new migration but no Asaas env.
-5. Owner account stays on the manually-set `active`/`business` row (no checkout needed for the test account).
+- **Adapter (mocked `fetch`):** checkout payload shape; `parseWebhook` mapping (each event → normalized/null); base URL + headers (`access_token`, `User-Agent`); token rejection. No live calls.
+- **Checkout route:** creates exactly **one** checkout per `(account, plan)` within the idempotency window (repeat clicks reuse the URL); rejects custom/trial plans.
+- **Upgrade safety:** starting an upgrade does **not** flip an `active` subscription to `past_due`; `plan_id` only changes after a confirmed webhook.
+- **Webhook:** confirmed event activates; duplicate `event_id` is a no-op; `OVERDUE`/`CAPTURE_REFUSED`/`CHARGEBACK_*` → `past_due`; `REFUNDED`/`DELETED` → `canceled`.
+- **Allow-list:** allowed model passes; unlisted model → `400`; custom-plan expanded keys pass.
+- Gateway stubbed in CI (`BILLING_GATEWAY` unset). Manual **sandbox** checklist (sandbox key, Asaas test card, observe webhooks for confirm + a forced refund/chargeback) before prod cutover.
+
+---
+
+## 10. Rollout
+
+1. Migration 033 (prices, `allowed_model_keys`, `is_custom`, `billing_checkouts`, `billing_webhook_events`).
+2. Registry + adapter + routes + allow-list enforcement, gateway still stub in prod (`BILLING_GATEWAY` unset) — ships dark.
+3. Configure Asaas **sandbox**; run the manual checklist end-to-end (confirm, refund, chargeback, repeat-click).
+4. Flip `BILLING_GATEWAY=asaas` + prod keys + webhook URL on `zenith-sender` (web). Checkout/webhook are web-only; the worker only reads `allowed_model_keys` from the plan, so it needs migration 033 but no Asaas env.
+5. Owner account stays on the manually-set `active`/`business` row (no checkout needed).
