@@ -214,7 +214,15 @@ export function ContactForm({
         }
         return;
       }
-      const message = err instanceof Error ? err.message : 'Failed to save contact';
+      // The enforce_contact_limit() trigger (migration 032) aborts the
+      // insert when the plan's contact cap is reached. Surface it as a
+      // billing message instead of a raw Postgres error.
+      const raw = err instanceof Error ? err.message : '';
+      if (raw.includes('contact_limit_reached')) {
+        toast.error('Limite de contatos do seu plano atingido. Faça upgrade para adicionar mais.');
+        return;
+      }
+      const message = raw || 'Failed to save contact';
       toast.error(message);
     } finally {
       setSaving(false);

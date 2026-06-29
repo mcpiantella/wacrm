@@ -1,0 +1,16 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "web (Next.js dev)",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 3000
+    },
+    {
+      "name": "worker (SDR queue consumer)",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "worker"]
+    }
+  ]
+}

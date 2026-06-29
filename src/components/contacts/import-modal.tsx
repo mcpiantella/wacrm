@@ -311,7 +311,12 @@ export function ImportModal({
       //    that normalizes equal) counts as skipped, not failed.
       const chunkSize = 50;
 
-      for (let i = 0; i < toInsert.length; i += chunkSize) {
+      // The enforce_contact_limit() trigger (migration 032) aborts an
+      // insert once the plan's contact cap is reached. When we hit it we
+      // stop importing further rows and tell the user to upgrade.
+      let limitHit = false;
+
+      for (let i = 0; i < toInsert.length && !limitHit; i += chunkSize) {
         const chunk = toInsert.slice(i, i + chunkSize);
         const rows = chunk.map((row) => ({
           user_id: user.id,
@@ -328,6 +333,10 @@ export function ImportModal({
           .select('id');
 
         if (error) {
+          if (error.message?.includes('contact_limit_reached')) {
+            limitHit = true;
+            break;
+          }
           // Retry individually so one bad/duplicate row doesn't sink
           // the whole chunk.
           for (let j = 0; j < rows.length; j++) {
@@ -347,6 +356,9 @@ export function ImportModal({
                   tagNames: source.tagNames,
                 });
               }
+            } else if (singleErr?.message?.includes('contact_limit_reached')) {
+              limitHit = true;
+              break;
             } else if (isUniqueViolation(singleErr)) {
               skipped++;
             } else {
@@ -409,6 +421,11 @@ export function ImportModal({
       if (failed > 0) {
         toast.error(
           `${failed} contact${failed !== 1 ? 's' : ''} failed to import`
+        );
+      }
+      if (limitHit) {
+        toast.error(
+          'Limite de contatos do seu plano atingido — importação interrompida. Faça upgrade para adicionar mais.'
         );
       }
     } catch (err: unknown) {
