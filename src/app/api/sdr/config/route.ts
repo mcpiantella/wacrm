@@ -4,6 +4,8 @@ import {
   requireRole,
   toErrorResponse,
 } from '@/lib/auth/account'
+import { assertModelAllowed } from '@/lib/billing/allowed-models'
+import { BillingError, billingErrorResponse } from '@/lib/billing/errors'
 
 /**
  * /api/sdr/config — the per-campaign SDR configuration.
@@ -81,6 +83,15 @@ export async function PUT(request: Request) {
           .sort((a, b) => a - b)
           .slice(0, 5)
       : [180, 1440]
+
+    const requestedModel = typeof b.model === 'string' && b.model.trim() ? b.model.trim() : null
+    try {
+      await assertModelAllowed(supabase, accountId, requestedModel)
+    } catch (e) {
+      if (e instanceof BillingError) return billingErrorResponse(e.code)
+      throw e
+    }
+
     const row = {
       account_id: accountId,
       broadcast_id: broadcastId,
@@ -89,7 +100,7 @@ export async function PUT(request: Request) {
       qualification_criteria: Array.isArray(b.qualification_criteria)
         ? b.qualification_criteria
         : [],
-      model: typeof b.model === 'string' && b.model.trim() ? b.model.trim() : null,
+      model: requestedModel,
       handoff_keywords: Array.isArray(b.handoff_keywords)
         ? b.handoff_keywords.filter((k): k is string => typeof k === 'string')
         : [],
