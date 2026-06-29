@@ -4,7 +4,17 @@ import { getGateway } from '@/lib/billing/gateway'
 import { recordBillingEvent } from '@/lib/billing/events'
 import { subscriptionPatchForEvent } from '@/lib/billing/webhook-apply'
 
-/** POST /api/billing/webhook — Asaas events. Always 200 once token is valid. */
+type CheckoutRow = { account_id: string; target_plan_id: string | null; id: string } | null
+
+/**
+ * POST /api/billing/webhook — Asaas events. Always 200 once token is valid.
+ *
+ * Ordering is deliberate: the dedup record (billing_webhook_events) is written
+ * only AFTER the subscription state change durably succeeds. This gives
+ * at-least-once apply — the patch is idempotent, so an Asaas retry safely
+ * re-applies if a transient write fails, and dedup only suppresses a repeated
+ * audit/processing once state is committed.
+ */
 export async function POST(request: Request) {
   const gateway = getGateway()
   const raw = await request.text()
@@ -16,15 +26,16 @@ export async function POST(request: Request) {
   const ev = await gateway.parseWebhook(new Request(request.url, { method: 'POST', headers, body: raw }))
   if (!ev) return NextResponse.json({ ok: true }) // bad token or ignored event -> 200, no state change
 
+  // Read-first duplicate check: if we've already recorded this event, skip.
+  // (The dedup row is written only after a successful state change, below.)
   if (eventId) {
-    const { error } = await db.from('billing_webhook_events').insert({ event_id: eventId })
-    if (error) return NextResponse.json({ ok: true, duplicate: true }) // PK conflict => already processed
+    const { data: seen } = await db
+      .from('billing_webhook_events').select('event_id').eq('event_id', eventId).maybeSingle()
+    if (seen) return NextResponse.json({ ok: true, duplicate: true })
   }
 
   let accountId: string | null = null
   let targetPlanId: string | null = null
-
-  type CheckoutRow = { account_id: string; target_plan_id: string | null; id: string } | null
 
   // Resolve account from checkout: try gateway_subscription_id first, then gateway_checkout_id.
   // Two sequential .eq() lookups chosen over .or() for clean type-checking with conditional fields.
@@ -57,11 +68,12 @@ export async function POST(request: Request) {
       accountId = chkRow.account_id ?? null
       targetPlanId = chkRow.target_plan_id ?? null
       if (ev.type === 'subscription_active' && chkRow.id) {
-        await db.from('billing_checkouts').update({
+        const { error: chkErr } = await db.from('billing_checkouts').update({
           status: 'completed',
           completed_at: new Date().toISOString(),
           ...(ev.gatewaySubscriptionId ? { gateway_subscription_id: ev.gatewaySubscriptionId } : {}),
         }).eq('id', chkRow.id)
+        if (chkErr) console.error('[billing/webhook] checkout complete update failed', chkErr.message)
       }
     }
   }
@@ -78,7 +90,17 @@ export async function POST(request: Request) {
   if (!accountId) return NextResponse.json({ ok: true, unmatched: true })
 
   const patch = subscriptionPatchForEvent(ev, targetPlanId)
-  await db.from('subscriptions').update({ ...patch, updated_at: new Date().toISOString() }).eq('account_id', accountId)
+  const { error: subErr } = await db
+    .from('subscriptions').update({ ...patch, updated_at: new Date().toISOString() }).eq('account_id', accountId)
+  if (subErr) {
+    // State write failed — do NOT record the event as processed, so an Asaas
+    // retry can re-apply (the patch is idempotent). Surface for ops/alerting.
+    console.error('[billing/webhook] subscription update failed', subErr.message)
+    return NextResponse.json({ ok: true })
+  }
+
+  // State durably applied — now safe to dedup + audit.
+  if (eventId) await db.from('billing_webhook_events').insert({ event_id: eventId })
   await recordBillingEvent(db, accountId, 'subscription_status_changed', { event: ev.type })
 
   return NextResponse.json({ ok: true })

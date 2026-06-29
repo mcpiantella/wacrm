@@ -32,6 +32,8 @@ CREATE INDEX IF NOT EXISTS idx_billing_checkouts_lookup
   ON billing_checkouts (account_id, target_plan_id, status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_billing_checkouts_gw
   ON billing_checkouts (gateway_checkout_id);
+CREATE INDEX IF NOT EXISTS idx_billing_checkouts_sub
+  ON billing_checkouts (gateway_subscription_id);
 
 ALTER TABLE billing_checkouts ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS billing_checkouts_select ON billing_checkouts;
