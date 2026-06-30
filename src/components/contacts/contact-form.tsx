@@ -194,7 +194,7 @@ export function ContactForm({
         }
       }
 
-      toast.success(isEdit ? 'Contact updated' : 'Contact created');
+      toast.success(isEdit ? 'Contato atualizado' : 'Contato criado');
       onOpenChange(false);
       onSaved();
     } catch (err: unknown) {
@@ -222,7 +222,7 @@ export function ContactForm({
         toast.error('Limite de contatos do seu plano atingido. Faça upgrade para adicionar mais.');
         return;
       }
-      const message = raw || 'Failed to save contact';
+      const message = raw || 'Falha ao salvar contato';
       toast.error(message);
     } finally {
       setSaving(false);
@@ -234,19 +234,19 @@ export function ContactForm({
       <DialogContent className="bg-popover border-border text-popover-foreground sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="text-popover-foreground">
-            {isEdit ? 'Edit Contact' : 'Add Contact'}
+            {isEdit ? 'Editar Contato' : 'Adicionar Contato'}
           </DialogTitle>
           <DialogDescription className="text-muted-foreground">
             {isEdit
-              ? 'Update the contact details below.'
-              : 'Fill in the details to create a new contact.'}
+              ? 'Atualize os dados do contato abaixo.'
+              : 'Preencha os dados para criar um novo contato.'}
           </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="cf-name" className="text-muted-foreground">
-              Name
+              Nome
             </Label>
             <Input
               id="cf-name"
@@ -259,7 +259,7 @@ export function ContactForm({
 
           <div className="space-y-2">
             <Label htmlFor="cf-phone" className="text-muted-foreground">
-              Phone <span className="text-red-400">*</span>
+              Telefone <span className="text-red-400">*</span>
             </Label>
             <Input
               id="cf-phone"
