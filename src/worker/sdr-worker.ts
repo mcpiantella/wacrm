@@ -23,6 +23,7 @@ import { decideFollowUp } from '@/lib/sdr/followup'
 import { consumeAiMessageOrThrow } from '@/lib/billing/quota'
 import { BillingError } from '@/lib/billing/errors'
 import { recordBillingEvent } from '@/lib/billing/events'
+import { getPlanAllowedModels } from '@/lib/billing/allowed-models'
 import { executeDecision, executeFollowUp, CHANNEL_COLUMNS, type ExecuteDeps } from '@/lib/sdr/execute'
 import { createChannel } from '@/lib/whatsapp/channel/factory'
 import type { ChannelRow } from '@/lib/whatsapp/channel/types'
@@ -46,6 +47,17 @@ async function handleJob(conversationId: string): Promise<void> {
     console.warn('[sdr-worker] context not found for', conversationId)
     return
   }
+  // Cost guard: a stored model must still be in the account's current plan
+  // allow-list. If the plan was downgraded (or the row was patched directly),
+  // fall back to the default model instead of billing a premium model.
+  if (ctx.config?.model) {
+    const allowed = await getPlanAllowedModels(supabaseAdmin(), ctx.conversation.account_id)
+    if (!allowed.includes(ctx.config.model)) {
+      console.warn(`[sdr-worker] model ${ctx.config.model} not allowed for account ${ctx.conversation.account_id}; using default`)
+      ctx.config.model = null
+    }
+  }
+
   try {
     const decision = await decideFromContext(ctx, sdrDeps)
 
@@ -121,6 +133,15 @@ async function handleFollowUp(
   const supabase = supabaseAdmin()
   const ctx = await loadSdrContext(supabase, conversationId)
   if (!ctx) return
+
+  // Cost guard: re-validate stored model against the account's current plan.
+  if (ctx.config?.model) {
+    const allowed = await getPlanAllowedModels(supabaseAdmin(), ctx.conversation.account_id)
+    if (!allowed.includes(ctx.config.model)) {
+      console.warn(`[sdr-worker] model ${ctx.config.model} not allowed for account ${ctx.conversation.account_id}; using default`)
+      ctx.config.model = null
+    }
+  }
 
   let channel = null
   let provider = ''

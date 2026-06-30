@@ -1,12 +1,10 @@
 import type { BillingGateway } from './types'
 import { stubGateway } from './stub'
+import { asaasGateway } from './asaas'
 
-/**
- * Gateway factory. Cycle A always returns the stub; Cycle B switches on
- * `process.env.BILLING_GATEWAY === 'asaas'` to return the real adapter.
- */
+/** Stub by default (CI/local stay offline); Asaas when BILLING_GATEWAY=asaas. */
 export function getGateway(): BillingGateway {
-  return stubGateway
+  return process.env.BILLING_GATEWAY === 'asaas' ? asaasGateway : stubGateway
 }
 
-export type { BillingGateway, BillingWebhookEvent } from './types'
+export type { BillingGateway, BillingWebhookEvent, CreateCheckoutInput } from './types'
