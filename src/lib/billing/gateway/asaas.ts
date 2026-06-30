@@ -22,10 +22,10 @@ async function asaasFetch(path: string, init: RequestInit) {
   return res.json()
 }
 
-// NOTE: verify exact /checkouts path + field names against live Asaas docs.
+// Event → status maps. Confirmed against real Asaas sandbox webhook payloads.
 const PAST_DUE = new Set(['PAYMENT_OVERDUE', 'PAYMENT_CREDIT_CARD_CAPTURE_REFUSED', 'PAYMENT_CHARGEBACK_REQUESTED', 'PAYMENT_CHARGEBACK_DISPUTE'])
-const CANCELED = new Set(['PAYMENT_REFUNDED', 'PAYMENT_DELETED', 'SUBSCRIPTION_DELETED'])
-const ACTIVE = new Set(['PAYMENT_CONFIRMED', 'PAYMENT_RECEIVED'])
+const CANCELED = new Set(['PAYMENT_REFUNDED', 'PAYMENT_DELETED', 'SUBSCRIPTION_DELETED', 'SUBSCRIPTION_INACTIVATED'])
+const ACTIVE_PAYMENT = new Set(['PAYMENT_CONFIRMED', 'PAYMENT_RECEIVED'])
 
 export const asaasGateway: BillingGateway = {
   async createCheckout(input: CreateCheckoutInput) {
@@ -62,13 +62,42 @@ export const asaasGateway: BillingGateway = {
     if (!expected) return null
     const token = req.headers.get('asaas-access-token') ?? ''
     if (!constantTimeEqual(token, expected)) return null
-    const body = (await req.json().catch(() => null)) as { event?: string; payment?: Record<string, unknown> } | null
+    const body = (await req.json().catch(() => null)) as {
+      event?: string
+      payment?: Record<string, unknown>
+      subscription?: Record<string, unknown>
+    } | null
     if (!body?.event) return null
-    const sub = body.payment?.subscription ? String(body.payment.subscription) : undefined
-    const periodEnd = body.payment?.dueDate ? String(body.payment.dueDate) : new Date().toISOString()
-    if (ACTIVE.has(body.event)) return { type: 'subscription_active', gatewaySubscriptionId: sub, periodEnd }
-    if (PAST_DUE.has(body.event)) return { type: 'subscription_past_due', gatewaySubscriptionId: sub }
-    if (CANCELED.has(body.event)) return { type: 'subscription_canceled', gatewaySubscriptionId: sub }
+
+    // Asaas sends either a `payment` object (PAYMENT_* events) or a `subscription`
+    // object (SUBSCRIPTION_* events). The subscription payload carries
+    // `checkoutSession` — the id we stored as billing_checkouts.gateway_checkout_id —
+    // which is how the FIRST activation links back to the account (externalReference
+    // is not propagated by Asaas Checkout). Renewals link via the subscription id.
+    const subObj = body.subscription
+    const payObj = body.payment
+    const gatewaySubscriptionId = subObj?.id
+      ? String(subObj.id)
+      : payObj?.subscription
+        ? String(payObj.subscription)
+        : undefined
+    const gatewayCheckoutId = subObj?.checkoutSession ? String(subObj.checkoutSession) : undefined
+    const periodEnd = subObj?.nextDueDate
+      ? String(subObj.nextDueDate)
+      : payObj?.dueDate
+        ? String(payObj.dueDate)
+        : new Date().toISOString()
+
+    const ev = body.event
+    if (ev === 'SUBSCRIPTION_CREATED' || ev === 'SUBSCRIPTION_UPDATED') {
+      const status = subObj?.status ? String(subObj.status) : ''
+      if (status === 'ACTIVE') return { type: 'subscription_active', gatewaySubscriptionId, gatewayCheckoutId, periodEnd }
+      if (status === 'INACTIVE' || status === 'EXPIRED') return { type: 'subscription_canceled', gatewaySubscriptionId, gatewayCheckoutId }
+      return null
+    }
+    if (ACTIVE_PAYMENT.has(ev)) return { type: 'subscription_active', gatewaySubscriptionId, gatewayCheckoutId, periodEnd }
+    if (PAST_DUE.has(ev)) return { type: 'subscription_past_due', gatewaySubscriptionId, gatewayCheckoutId }
+    if (CANCELED.has(ev)) return { type: 'subscription_canceled', gatewaySubscriptionId, gatewayCheckoutId }
     return null
   },
 }
