@@ -75,14 +75,14 @@ export function ChannelsPanel() {
       const res = await fetch('/api/channels', { cache: 'no-store' });
       if (!res.ok) {
         const payload = await res.json().catch(() => ({}));
-        toast.error(payload.error || 'Failed to load channels');
+        toast.error(payload.error || 'Falha ao carregar canais');
         return;
       }
       const data = (await res.json()) as { channels: Channel[] };
       setChannels(data.channels);
     } catch (err) {
       console.error('[ChannelsPanel] load error:', err);
-      toast.error('Could not reach the server');
+      toast.error('Não foi possível alcançar o servidor');
     } finally {
       setLoading(false);
     }
@@ -102,16 +102,16 @@ export function ChannelsPanel() {
       });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) {
-        toast.error(payload.error || 'Failed to save channel');
+        toast.error(payload.error || 'Falha ao salvar canal');
         return;
       }
-      toast.success('Evolution number saved');
+      toast.success('Número Evolution salvo');
       setAddOpen(false);
       setForm({ ...EMPTY_FORM });
       void load();
     } catch (err) {
       console.error('[ChannelsPanel] save error:', err);
-      toast.error('Could not reach the server');
+      toast.error('Não foi possível alcançar o servidor');
     } finally {
       setSaving(false);
     }
@@ -123,14 +123,14 @@ export function ChannelsPanel() {
       const res = await fetch(`/api/channels/${channel.id}`, { method: 'DELETE' });
       if (!res.ok) {
         const payload = await res.json().catch(() => ({}));
-        toast.error(payload.error || 'Failed to remove channel');
+        toast.error(payload.error || 'Falha ao remover canal');
         return;
       }
-      toast.success('Channel removed');
+      toast.success('Canal removido');
       setChannels((prev) => prev.filter((c) => c.id !== channel.id));
     } catch (err) {
       console.error('[ChannelsPanel] delete error:', err);
-      toast.error('Could not reach the server');
+      toast.error('Não foi possível alcançar o servidor');
     } finally {
       setDeleting(null);
     }
@@ -147,19 +147,19 @@ export function ChannelsPanel() {
   return (
     <section className="animate-in fade-in-50 space-y-6 duration-200">
       <SettingsPanelHead
-        title="Channels"
+        title="Canais"
         description={
           <>
-            Every WhatsApp number this workspace sends and receives on — across
-            the official Cloud API and the unofficial Evolution API. Add as many
-            numbers as you like; mix providers freely.
+            Todos os números de WhatsApp pelos quais este workspace envia e
+            recebe mensagens — via Cloud API oficial e Evolution API. Adicione
+            quantos números quiser; misture provedores livremente.
           </>
         }
         action={
           <RequireRole min="admin">
             <Button onClick={() => setAddOpen(true)}>
               <Plus className="size-4" />
-              Add Evolution number
+              Adicionar número Evolution
             </Button>
           </RequireRole>
         }
@@ -169,10 +169,10 @@ export function ChannelsPanel() {
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-10 text-center">
             <Radio className="text-muted-foreground size-6" />
-            <p className="text-muted-foreground mt-2 text-sm">No channels yet.</p>
+            <p className="text-muted-foreground mt-2 text-sm">Nenhum canal ainda.</p>
             <p className="text-muted-foreground mt-1 text-xs">
-              Add an Evolution number here, or set up a Cloud API number in the{' '}
-              <span className="text-foreground">WhatsApp</span> tab.
+              Adicione um número Evolution aqui, ou configure um número Cloud API na aba{' '}
+              <span className="text-foreground">WhatsApp</span>.
             </p>
           </CardContent>
         </Card>
@@ -202,7 +202,7 @@ export function ChannelsPanel() {
                               : 'border-border bg-muted text-muted-foreground'
                           }`}
                         >
-                          {connected ? 'Connected' : c.status}
+                          {connected ? 'Conectado' : c.status}
                         </Badge>
                       </div>
                       <p className="text-muted-foreground mt-0.5 font-mono text-xs">
@@ -217,12 +217,12 @@ export function ChannelsPanel() {
                         )}
                         {c.capabilities.freeform && (
                           <Badge className="border-border bg-muted text-muted-foreground text-[10px]">
-                            Freeform text
+                            Texto livre
                           </Badge>
                         )}
                         {c.provider === 'cloud' && (
                           <span className="text-muted-foreground text-[10px]">
-                            Managed in the WhatsApp tab
+                            Gerenciado na aba WhatsApp
                           </span>
                         )}
                       </div>
@@ -252,61 +252,61 @@ export function ChannelsPanel() {
 
       {!canEditSettings && channels.length > 0 && (
         <p className="text-muted-foreground text-xs">
-          Only admins can add or remove channels.
+          Somente administradores podem adicionar ou remover canais.
         </p>
       )}
 
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Add an Evolution number</DialogTitle>
+            <DialogTitle>Adicionar número Evolution</DialogTitle>
             <DialogDescription>
-              Connect a number running on your Evolution API server. The API key
-              is encrypted on the server and never shown again.
+              Conecte um número rodando no seu servidor Evolution API. A chave
+              de API é criptografada no servidor e nunca exibida novamente.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-3">
             <div className="space-y-1.5">
-              <Label htmlFor="ch-name">Display name</Label>
+              <Label htmlFor="ch-name">Nome de exibição</Label>
               <Input
                 id="ch-name"
-                placeholder="e.g. Sales line"
+                placeholder="ex: Linha de vendas"
                 value={form.display_name}
                 onChange={(e) => setForm((f) => ({ ...f, display_name: e.target.value }))}
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="ch-instance">Instance name</Label>
+              <Label htmlFor="ch-instance">Nome da instância</Label>
               <Input
                 id="ch-instance"
-                placeholder="e.g. imobquest"
+                placeholder="ex: imobquest"
                 value={form.instance}
                 onChange={(e) => setForm((f) => ({ ...f, instance: e.target.value }))}
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="ch-base">Server URL</Label>
+              <Label htmlFor="ch-base">URL do servidor</Label>
               <Input
                 id="ch-base"
-                placeholder="https://evolution.example.com"
+                placeholder="https://evolution.exemplo.com"
                 value={form.base_url}
                 onChange={(e) => setForm((f) => ({ ...f, base_url: e.target.value }))}
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="ch-key">API key</Label>
+              <Label htmlFor="ch-key">Chave de API</Label>
               <Input
                 id="ch-key"
                 type="password"
-                placeholder="Instance API key"
+                placeholder="Chave de API da instância"
                 value={form.api_key}
                 onChange={(e) => setForm((f) => ({ ...f, api_key: e.target.value }))}
               />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="ch-phone">
-                Phone number <span className="text-muted-foreground">(optional)</span>
+                Telefone <span className="text-muted-foreground">(opcional)</span>
               </Label>
               <Input
                 id="ch-phone"
@@ -319,11 +319,11 @@ export function ChannelsPanel() {
 
           <DialogFooter>
             <Button variant="ghost" onClick={() => setAddOpen(false)} disabled={saving}>
-              Cancel
+              Cancelar
             </Button>
             <Button onClick={handleAddEvolution} disabled={saving}>
               {saving && <Loader2 className="size-4 animate-spin" />}
-              Save number
+              Salvar número
             </Button>
           </DialogFooter>
         </DialogContent>

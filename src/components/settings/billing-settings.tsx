@@ -107,7 +107,7 @@ export function BillingSettings() {
         <h2 className="text-lg font-semibold text-foreground">Plano &amp; cobrança</h2>
         <p className="text-sm text-muted-foreground">
           Plano atual: <strong className="text-foreground">{v.plan.name}</strong>
-          {ent.trialDaysLeft !== null && ` · trial: ${ent.trialDaysLeft} dia(s) restante(s)`}
+          {ent.trialDaysLeft !== null && ` · período de teste: ${ent.trialDaysLeft} dia(s) restante(s)`}
           {ent.blocked && ' · bloqueado'}
         </p>
       </div>

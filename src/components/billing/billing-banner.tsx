@@ -36,7 +36,7 @@ export function BillingBanner() {
       const ent = resolveEntitlements(sub as SubscriptionRow, (plan as PlanLimits) ?? FALLBACK_PLAN);
       if (ent.blocked) setMsg('Sua conta está bloqueada — assine para voltar a disparar.');
       else if (ent.trialDaysLeft !== null && ent.trialDaysLeft <= 2)
-        setMsg(`Seu teste termina em ${ent.trialDaysLeft} dia(s). Assine para continuar.`);
+        setMsg(`Seu período de teste termina em ${ent.trialDaysLeft} dia(s). Assine para continuar.`);
       else setMsg(null);
     })();
   }, [accountId]);
