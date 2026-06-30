@@ -162,16 +162,15 @@ export function FlowBuilder() {
       <section className="flex flex-col gap-3">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold text-foreground">
-            Nodes ({state.nodes.length})
+            Nós ({state.nodes.length})
           </h2>
           <AddNodeButton onAdd={addNode} />
         </div>
 
         {state.nodes.length === 0 ? (
           <div className="rounded-lg border border-dashed border-border bg-card/50 p-8 text-center text-sm text-muted-foreground">
-            Add a <strong>Start</strong> node, then a <strong>Send buttons</strong>
-            {" "}node, then a <strong>Handoff</strong> — that&apos;s the welcome-menu
-            shape from the brief.
+            Adicione um nó <strong>Início</strong>, depois um nó <strong>Enviar botões</strong>
+            {" "}e por fim um <strong>Transferência</strong> — esse é o formato de menu de boas-vindas.
           </div>
         ) : (
           state.nodes.map((node) => (
@@ -245,7 +244,7 @@ function KeywordsInput({
           commit();
         }
       }}
-      placeholder="support, help, hi"
+      placeholder="suporte, ajuda, oi"
       className="bg-muted"
     />
   );
@@ -351,7 +350,7 @@ function EntryPicker({
         onChange={(key) =>
           setState((s) => ({ ...s, entry_node_id: key }))
         }
-        placeholder="Pick the first node…"
+        placeholder="Selecionar o primeiro nó…"
         className="flex-1 max-w-xs"
       />
     </section>
@@ -522,13 +521,13 @@ function NodeConfigWithAdvanced({
           ) : (
             <ChevronDown className="h-3 w-3" />
           )}
-          {showAdvanced ? "Hide" : "Show"} advanced
+          {showAdvanced ? "Ocultar" : "Mostrar"} avançado
         </button>
         {showAdvanced && (
           <div className="mt-3 flex flex-col gap-3">
             <div>
               <label className="mb-1 block text-xs text-muted-foreground">
-                Node key (internal identifier — keep stable for analytics)
+                Chave do nó (identificador interno — mantenha estável para analytics)
               </label>
               <Input
                 value={node.node_key}
@@ -574,10 +573,10 @@ function AddNodeButton({ onAdd }: { onAdd: (type: NodeType) => void }) {
     <DropdownMenu>
       <DropdownMenuTrigger
         className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted"
-        aria-label="Add node"
+        aria-label="Adicionar nó"
       >
         <Plus className="h-3.5 w-3.5" />
-        Add node
+        Adicionar nó
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="border-border bg-popover">
         {types.map((t) => {

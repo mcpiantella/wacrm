@@ -347,9 +347,9 @@ export function FlowEditorProvider({
         throw new Error(json.error ?? `Save failed: ${res.status}`);
       }
       setDirty(false);
-      toast.success("Saved.");
+      toast.success("Salvo.");
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Save failed";
+      const msg = err instanceof Error ? err.message : "Falha ao salvar";
       toast.error(msg);
     } finally {
       setSaving(false);
@@ -360,7 +360,7 @@ export function FlowEditorProvider({
   const setStatus = useCallback(
     async (next: BuilderState["status"]) => {
       if (next === "active" && !canActivate) {
-        toast.error("Fix the issues below before activating.");
+        toast.error("Corrija os problemas abaixo antes de ativar.");
         return;
       }
       setActivating(true);
@@ -383,13 +383,13 @@ export function FlowEditorProvider({
         setStateRaw((s) => ({ ...s, status: next }));
         toast.success(
           next === "active"
-            ? "Flow activated."
+            ? "Fluxo ativado."
             : next === "archived"
-              ? "Archived."
-              : "Saved as draft.",
+              ? "Arquivado."
+              : "Salvo como rascunho.",
         );
       } catch (err) {
-        const msg = err instanceof Error ? err.message : "Status update failed";
+        const msg = err instanceof Error ? err.message : "Falha ao atualizar status";
         toast.error(msg);
       } finally {
         setActivating(false);
@@ -411,7 +411,7 @@ export function FlowEditorProvider({
       if (!res.ok) throw new Error(`Delete failed: ${res.status}`);
       router.push("/flows");
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Delete failed";
+      const msg = err instanceof Error ? err.message : "Falha ao excluir";
       toast.error(msg);
     }
   }, [initialFlow.id, router, state.name]);
