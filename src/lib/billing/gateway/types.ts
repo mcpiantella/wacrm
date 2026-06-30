@@ -1,6 +1,7 @@
 export interface CreateCheckoutInput {
   accountId: string
   planId: string
+  itemName: string // human label for the charge line item (the plan name)
   value: number // monthly price in BRL (reais, not cents)
   cycle: 'MONTHLY'
   successUrl: string

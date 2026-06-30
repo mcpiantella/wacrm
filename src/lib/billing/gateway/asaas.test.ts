@@ -20,7 +20,7 @@ describe('asaasGateway.createCheckout', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
     const res = await asaasGateway.createCheckout({
-      accountId: 'acc-1', planId: 'pro', value: 297, cycle: 'MONTHLY',
+      accountId: 'acc-1', planId: 'pro', itemName: 'Pro', value: 297, cycle: 'MONTHLY',
       successUrl: 's', cancelUrl: 'c', expiredUrl: 'e', customer: { name: 'Acme' },
     })
     expect(res.checkoutId).toBe('chk_1')
@@ -32,18 +32,21 @@ describe('asaasGateway.createCheckout', () => {
     expect(sent.billingTypes).toEqual(['CREDIT_CARD'])
     expect(sent.chargeTypes).toEqual(['RECURRENT'])
     expect(sent.subscription.cycle).toBe('MONTHLY')
+    expect(sent.subscription.nextDueDate).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    expect(sent.items[0]).toMatchObject({ name: 'Pro', quantity: 1, value: 297 })
+    expect(sent.value).toBeUndefined()
     expect(sent.externalReference).toBe('acc-1')
   })
   it('maps a 4xx into a BillingError(gateway_error)', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 400, json: async () => ({ errors: [] }) }))
     await expect(asaasGateway.createCheckout({
-      accountId: 'a', planId: 'pro', value: 1, cycle: 'MONTHLY', successUrl: 's', cancelUrl: 'c', expiredUrl: 'e',
+      accountId: 'a', planId: 'pro', itemName: 'Pro', value: 1, cycle: 'MONTHLY', successUrl: 's', cancelUrl: 'c', expiredUrl: 'e',
     })).rejects.toMatchObject({ code: 'gateway_error' })
   })
   it('rejects when the response is missing the checkout url', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ id: 'chk_1' }) }))
     await expect(asaasGateway.createCheckout({
-      accountId: 'a', planId: 'pro', value: 1, cycle: 'MONTHLY', successUrl: 's', cancelUrl: 'c', expiredUrl: 'e',
+      accountId: 'a', planId: 'pro', itemName: 'Pro', value: 1, cycle: 'MONTHLY', successUrl: 's', cancelUrl: 'c', expiredUrl: 'e',
     })).rejects.toMatchObject({ code: 'gateway_error' })
   })
   it('extracts gatewayCustomerId from a nested customer object', async () => {
@@ -52,7 +55,7 @@ describe('asaasGateway.createCheckout', () => {
       json: async () => ({ id: 'chk_1', link: 'https://asaas/checkout/chk_1', customer: { id: 'cus_9' } }),
     }))
     const res = await asaasGateway.createCheckout({
-      accountId: 'a', planId: 'pro', value: 1, cycle: 'MONTHLY', successUrl: 's', cancelUrl: 'c', expiredUrl: 'e',
+      accountId: 'a', planId: 'pro', itemName: 'Pro', value: 1, cycle: 'MONTHLY', successUrl: 's', cancelUrl: 'c', expiredUrl: 'e',
     })
     expect(res.gatewayCustomerId).toBe('cus_9')
   })
