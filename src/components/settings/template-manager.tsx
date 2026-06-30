@@ -891,7 +891,7 @@ export function TemplateManager() {
                         ) : (
                           <Upload className="h-3.5 w-3.5" />
                         )}
-                        Upload image
+                        Enviar imagem
                       </Button>
                       <span className="text-[11px] text-muted-foreground">
                         JPEG or PNG, ≤5 MB
@@ -928,7 +928,7 @@ export function TemplateManager() {
             </div>
 
             <div className="space-y-2">
-              <Label className="text-muted-foreground">Body Text</Label>
+              <Label className="text-muted-foreground">Texto do Corpo</Label>
               <Textarea
                 placeholder="Hello {{1}}, your order {{2}} is confirmed."
                 value={form.body_text}
@@ -972,9 +972,9 @@ export function TemplateManager() {
             </div>
 
             <div className="space-y-2">
-              <Label className="text-muted-foreground">Footer (optional)</Label>
+              <Label className="text-muted-foreground">Rodapé (opcional)</Label>
               <Input
-                placeholder="Optional footer text (max 60 chars)"
+                placeholder="Texto do rodapé opcional (máx. 60 caracteres)"
                 value={form.footer_text}
                 onChange={(e) =>
                   setForm({ ...form, footer_text: e.target.value })
@@ -986,7 +986,7 @@ export function TemplateManager() {
 
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <Label className="text-muted-foreground">Buttons (optional)</Label>
+                <Label className="text-muted-foreground">Botões (opcional)</Label>
                 <Button
                   type="button"
                   variant="outline"
@@ -996,7 +996,7 @@ export function TemplateManager() {
                   className="border-border bg-transparent text-muted-foreground hover:bg-muted h-7 text-xs"
                 >
                   <Plus className="size-3" />
-                  Add Button
+                  Adicionar Botão
                 </Button>
               </div>
               {form.buttons.length === 0 ? (
@@ -1126,7 +1126,7 @@ export function TemplateManager() {
               onClick={() => setDialogOpen(false)}
               className="border-border text-muted-foreground hover:bg-muted"
             >
-              Cancel
+              Cancelar
             </Button>
             <Button
               onClick={handleSubmit}
@@ -1136,12 +1136,12 @@ export function TemplateManager() {
               {submitting ? (
                 <>
                   <Loader2 className="size-4 animate-spin" />
-                  {editingId ? 'Saving…' : 'Submitting…'}
+                  {editingId ? 'Salvando…' : 'Enviando…'}
                 </>
               ) : editingId ? (
-                'Save & Resubmit'
+                'Salvar e Reenviar'
               ) : (
-                'Submit for Approval'
+                'Enviar para Aprovação'
               )}
             </Button>
           </DialogFooter>
@@ -1159,11 +1159,11 @@ export function TemplateManager() {
       >
         <DialogContent className="bg-popover border-border sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle className="text-popover-foreground">Delete template?</DialogTitle>
+            <DialogTitle className="text-popover-foreground">Excluir template?</DialogTitle>
             <DialogDescription className="text-muted-foreground">
               {templateToDelete?.meta_template_id
-                ? `"${templateToDelete?.name}" will be deleted from Meta and from wacrm. Active broadcasts using this template will start failing on their next send. This can't be undone.`
-                : `"${templateToDelete?.name}" will be deleted from wacrm. It was never submitted to Meta, so no remote cleanup is needed.`}
+                ? `"${templateToDelete?.name}" será excluído do Meta e do wacrm. Disparos ativos usando este template começarão a falhar no próximo envio. Esta ação não pode ser desfeita.`
+                : `"${templateToDelete?.name}" será excluído do wacrm. Ele nunca foi enviado ao Meta, portanto não é necessária limpeza remota.`}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="bg-popover border-border">
@@ -1173,7 +1173,7 @@ export function TemplateManager() {
               disabled={deletingId !== null}
               className="border-border text-muted-foreground hover:bg-muted"
             >
-              Cancel
+              Cancelar
             </Button>
             <Button
               onClick={confirmDelete}
@@ -1183,10 +1183,10 @@ export function TemplateManager() {
               {deletingId !== null ? (
                 <>
                   <Loader2 className="size-4 animate-spin" />
-                  Deleting…
+                  Excluindo…
                 </>
               ) : (
-                'Delete'
+                'Excluir'
               )}
             </Button>
           </DialogFooter>
