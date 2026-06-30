@@ -1,5 +1,5 @@
 import { BillingError } from '../errors'
-import type { BillingGateway, BillingWebhookEvent, CreateCheckoutInput } from './types'
+import type { BillingGateway, CreateCheckoutInput } from './types'
 
 function baseUrl() { return process.env.ASAAS_BASE_URL ?? 'https://api-sandbox.asaas.com/v3' }
 function headers() {
