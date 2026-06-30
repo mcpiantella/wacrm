@@ -93,6 +93,25 @@ describe('asaasGateway.parseWebhook', () => {
     const ev = await asaasGateway.parseWebhook(webhookReq({ event, payment: { subscription: 'sub_1' } }))
     expect(ev?.type).toBe(type)
   })
+  it('SUBSCRIPTION_CREATED (ACTIVE) -> active, linked via checkoutSession', async () => {
+    const ev = await asaasGateway.parseWebhook(webhookReq({
+      event: 'SUBSCRIPTION_CREATED',
+      subscription: { id: 'sub_1', status: 'ACTIVE', checkoutSession: 'chk_abc', nextDueDate: '2026-07-30' },
+    }))
+    expect(ev).toMatchObject({
+      type: 'subscription_active',
+      gatewaySubscriptionId: 'sub_1',
+      gatewayCheckoutId: 'chk_abc',
+      periodEnd: '2026-07-30',
+    })
+  })
+  it('SUBSCRIPTION_INACTIVATED -> canceled', async () => {
+    const ev = await asaasGateway.parseWebhook(webhookReq({
+      event: 'SUBSCRIPTION_INACTIVATED',
+      subscription: { id: 'sub_1', status: 'INACTIVE' },
+    }))
+    expect(ev?.type).toBe('subscription_canceled')
+  })
   it('ignores unknown events', async () => {
     expect(await asaasGateway.parseWebhook(webhookReq({ event: 'PAYMENT_PARTIALLY_REFUNDED' }))).toBeNull()
   })
