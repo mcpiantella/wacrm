@@ -17,8 +17,8 @@ export async function startCheckout(args: StartCheckoutArgs): Promise<{ checkout
   const { db, gateway, accountId, planId, origin } = args
 
   const { data: plan } = await db
-    .from('plans').select('id, price_cents, is_custom').eq('id', planId).maybeSingle()
-  const p = plan as { id: string; price_cents: number; is_custom: boolean } | null
+    .from('plans').select('id, name, price_cents, is_custom').eq('id', planId).maybeSingle()
+  const p = plan as { id: string; name: string; price_cents: number; is_custom: boolean } | null
   if (!p || p.is_custom || p.price_cents <= 0) throw new BillingError('plan_limit_reached', 'Plano inválido para checkout.')
 
   // Idempotency: reuse a recent started checkout for the same account+plan.
@@ -37,9 +37,9 @@ export async function startCheckout(args: StartCheckoutArgs): Promise<{ checkout
 
   const back = `${origin}/settings?tab=billing`
   const checkout = await gateway.createCheckout({
-    accountId, planId, value: p.price_cents / 100, cycle: 'MONTHLY',
+    accountId, planId, itemName: p.name, value: p.price_cents / 100, cycle: 'MONTHLY',
     successUrl: back, cancelUrl: back, expiredUrl: back,
-    customer: { customerId, name: accountId },
+    customer: { customerId, name: p.name },
   })
 
   await db.from('billing_checkouts').insert({

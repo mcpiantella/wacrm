@@ -29,14 +29,18 @@ const ACTIVE = new Set(['PAYMENT_CONFIRMED', 'PAYMENT_RECEIVED'])
 
 export const asaasGateway: BillingGateway = {
   async createCheckout(input: CreateCheckoutInput) {
+    // Asaas Checkout (recurring): the amount lives in `items`, the recurrence in
+    // `subscription` (cycle + first due date). No card/customerData here — the
+    // hosted page collects them. `externalReference` carries our account id so we
+    // can link the resulting subscription/payment webhooks back to the account.
     const body = {
       billingTypes: ['CREDIT_CARD'],
       chargeTypes: ['RECURRENT'],
-      subscription: { cycle: input.cycle },
-      value: input.value,
-      externalReference: input.accountId,
+      minutesToExpire: 60,
       callback: { successUrl: input.successUrl, cancelUrl: input.cancelUrl, expiredUrl: input.expiredUrl },
-      ...(input.customer ? { customerData: { name: input.customer.name, email: input.customer.email } } : {}),
+      items: [{ name: input.itemName, description: input.itemName, quantity: 1, value: input.value }],
+      subscription: { cycle: input.cycle, nextDueDate: new Date().toISOString().slice(0, 10) },
+      externalReference: input.accountId,
     }
     const json = await asaasFetch('/checkouts', { method: 'POST', body: JSON.stringify(body) })
     const id = json.id
