@@ -62,6 +62,15 @@ describe('asaasGateway.parseWebhook', () => {
   it('rejects a bad token', async () => {
     expect(await asaasGateway.parseWebhook(webhookReq({ event: 'PAYMENT_CONFIRMED' }, 'WRONG'))).toBeNull()
   })
+  it('rejects when ASAAS_WEBHOOK_TOKEN is empty (never authenticate against blank token)', async () => {
+    const saved = process.env.ASAAS_WEBHOOK_TOKEN
+    delete process.env.ASAAS_WEBHOOK_TOKEN
+    try {
+      expect(await asaasGateway.parseWebhook(webhookReq({ event: 'PAYMENT_CONFIRMED' }, ''))).toBeNull()
+    } finally {
+      process.env.ASAAS_WEBHOOK_TOKEN = saved
+    }
+  })
   it('PAYMENT_CONFIRMED -> subscription_active', async () => {
     const ev = await asaasGateway.parseWebhook(webhookReq({
       event: 'PAYMENT_CONFIRMED',

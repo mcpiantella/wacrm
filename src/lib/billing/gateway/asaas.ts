@@ -1,3 +1,4 @@
+import crypto from 'node:crypto'
 import { BillingError } from '../errors'
 import type { BillingGateway, CreateCheckoutInput } from './types'
 
@@ -53,9 +54,10 @@ export const asaasGateway: BillingGateway = {
   },
 
   async parseWebhook(req) {
-    const token = req.headers.get('asaas-access-token') ?? ''
     const expected = process.env.ASAAS_WEBHOOK_TOKEN ?? ''
-    if (!timingSafeEqual(token, expected)) return null
+    if (!expected) return null
+    const token = req.headers.get('asaas-access-token') ?? ''
+    if (!constantTimeEqual(token, expected)) return null
     const body = (await req.json().catch(() => null)) as { event?: string; payment?: Record<string, unknown> } | null
     if (!body?.event) return null
     const sub = body.payment?.subscription ? String(body.payment.subscription) : undefined
@@ -78,9 +80,10 @@ function extractCustomerId(customer: unknown): string | undefined {
 }
 
 /** Constant-time string compare (avoids leaking via early return). */
-function timingSafeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false
-  let diff = 0
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i)
-  return diff === 0
+function constantTimeEqual(a: string, b: string): boolean {
+  const ba = Buffer.from(a)
+  const bb = Buffer.from(b)
+  // timingSafeEqual throws on unequal lengths — bail early.
+  if (ba.length !== bb.length) return false
+  return crypto.timingSafeEqual(ba, bb)
 }

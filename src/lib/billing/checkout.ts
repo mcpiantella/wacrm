@@ -47,5 +47,13 @@ export async function startCheckout(args: StartCheckoutArgs): Promise<{ checkout
     gateway_checkout_id: checkout.checkoutId, checkout_url: checkout.checkoutUrl, status: 'started',
   }).select('id').single()
 
+  // Best-effort: persist the Asaas customer id so subsequent checkouts reuse
+  // the existing customer instead of creating a new one every time.
+  if (checkout.gatewayCustomerId && !customerId) {
+    await db.from('subscriptions')
+      .update({ gateway_customer_id: checkout.gatewayCustomerId })
+      .eq('account_id', accountId)
+  }
+
   return { checkoutUrl: checkout.checkoutUrl }
 }

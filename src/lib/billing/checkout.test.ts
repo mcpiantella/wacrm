@@ -12,6 +12,7 @@ function makeDb(existing: { checkout_url: string } | null) {
       }
       if (table === 'subscriptions') return {
         select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { gateway_customer_id: null }, error: null }) }) }),
+        update: () => ({ eq: async () => ({ error: null }) }),
       }
       if (table === 'billing_checkouts') return {
         select: () => ({ eq: () => ({ eq: () => ({ eq: () => ({ gte: () => ({ order: () => ({ limit: () => ({ maybeSingle: async () => ({ data: existing, error: null }) }) }) }) }) }) }) }),
