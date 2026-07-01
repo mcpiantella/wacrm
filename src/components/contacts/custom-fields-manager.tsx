@@ -35,10 +35,10 @@ export function CustomFieldsManager({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="border-border bg-popover text-popover-foreground sm:max-w-md">
         <DialogHeader>
-          <DialogTitle className=”text-popover-foreground”>Campos personalizados</DialogTitle>
-          <DialogDescription className=”text-muted-foreground”>
+          <DialogTitle className="text-popover-foreground">Campos personalizados</DialogTitle>
+          <DialogDescription className="text-muted-foreground">
             Defina campos extras de contato (ex.: CEP, origem do lead). Eles
-            aparecem em cada contato e na acao de automacao “Atualizar Campo do Contato”.
+            aparecem em cada contato e na acao de automacao "Atualizar Campo do Contato".
           </DialogDescription>
         </DialogHeader>
         <CustomFieldsPanel />
