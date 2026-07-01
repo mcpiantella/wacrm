@@ -95,9 +95,9 @@ interface Invitation {
 // Editable roles in the inline dropdown. Owner is never an option —
 // promotions go through the (deferred) Transfer Ownership flow.
 const EDITABLE_ROLES: { value: AccountRole; label: string; hint: string }[] = [
-  { value: 'admin', label: 'Admin', hint: 'Manage members + everything' },
-  { value: 'agent', label: 'Agent', hint: 'Use features; no settings' },
-  { value: 'viewer', label: 'Viewer', hint: 'Read-only across the app' },
+  { value: 'admin', label: 'Admin', hint: 'Gerenciar membros + tudo' },
+  { value: 'agent', label: 'Agente', hint: 'Usar funcionalidades; sem configurações' },
+  { value: 'viewer', label: 'Visualizador', hint: 'Somente leitura em todo o app' },
 ];
 
 // Per-role chip metadata (icon / label / colour) lives in the shared
@@ -117,11 +117,11 @@ function fmtDate(iso: string): string {
 
 function fmtExpiresIn(iso: string): string {
   const ms = new Date(iso).getTime() - Date.now();
-  if (ms <= 0) return 'expired';
+  if (ms <= 0) return 'expirado';
   const days = Math.floor(ms / (24 * 60 * 60 * 1000));
-  if (days >= 1) return `expires in ${days} day${days === 1 ? '' : 's'}`;
+  if (days >= 1) return `expira em ${days} dia${days === 1 ? '' : 's'}`;
   const hours = Math.max(1, Math.floor(ms / (60 * 60 * 1000)));
-  return `expires in ${hours} hour${hours === 1 ? '' : 's'}`;
+  return `expira em ${hours} hora${hours === 1 ? '' : 's'}`;
 }
 
 export function MembersTab() {
@@ -149,7 +149,7 @@ export function MembersTab() {
 
       if (!mres.ok) {
         const payload = await mres.json().catch(() => ({}));
-        toast.error(payload.error || 'Failed to load members');
+        toast.error(payload.error || 'Falha ao carregar membros');
         return;
       }
       const mdata = (await mres.json()) as { members: Member[] };
@@ -158,7 +158,7 @@ export function MembersTab() {
       if (ires) {
         if (!ires.ok) {
           const payload = await ires.json().catch(() => ({}));
-          toast.error(payload.error || 'Failed to load invitations');
+          toast.error(payload.error || 'Falha ao carregar convites');
           return;
         }
         const idata = (await ires.json()) as { invitations: Invitation[] };
@@ -168,7 +168,7 @@ export function MembersTab() {
       }
     } catch (err) {
       console.error('[MembersTab] load error:', err);
-      toast.error('Could not reach the server');
+      toast.error('Não foi possível alcançar o servidor');
     } finally {
       setLoading(false);
     }
@@ -208,10 +208,10 @@ export function MembersTab() {
           ),
         );
         const payload = await res.json().catch(() => ({}));
-        toast.error(payload.error || 'Failed to update role');
+        toast.error(payload.error || 'Falha ao atualizar função');
         return;
       }
-      toast.success(`Updated ${member.full_name || 'member'} to ${nextRole}`);
+      toast.success(`Função de ${member.full_name || 'membro'} atualizada para ${nextRole}`);
     } catch (err) {
       // Same revert on network failure.
       setMembers((prev) =>
@@ -220,7 +220,7 @@ export function MembersTab() {
         ),
       );
       console.error('[MembersTab] role change error:', err);
-      toast.error('Could not reach the server');
+      toast.error('Não foi possível alcançar o servidor');
     } finally {
       setPendingMemberAction(null);
     }
@@ -236,17 +236,17 @@ export function MembersTab() {
       );
       if (!res.ok) {
         const payload = await res.json().catch(() => ({}));
-        toast.error(payload.error || 'Failed to remove member');
+        toast.error(payload.error || 'Falha ao remover membro');
         return;
       }
-      toast.success(`Removed ${removingMember.full_name || 'member'}`);
+      toast.success(`${removingMember.full_name || 'Membro'} removido`);
       setMembers((prev) =>
         prev.filter((m) => m.user_id !== removingMember.user_id),
       );
       setRemovingMember(null);
     } catch (err) {
       console.error('[MembersTab] remove error:', err);
-      toast.error('Could not reach the server');
+      toast.error('Não foi possível alcançar o servidor');
     } finally {
       setPendingMemberAction(null);
     }
@@ -259,14 +259,14 @@ export function MembersTab() {
       });
       if (!res.ok) {
         const payload = await res.json().catch(() => ({}));
-        toast.error(payload.error || 'Failed to revoke invitation');
+        toast.error(payload.error || 'Falha ao revogar convite');
         return;
       }
-      toast.success('Invitation revoked');
+      toast.success('Convite revogado');
       setInvitations((prev) => prev.filter((i) => i.id !== invite.id));
     } catch (err) {
       console.error('[MembersTab] revoke error:', err);
-      toast.error('Could not reach the server');
+      toast.error('Não foi possível alcançar o servidor');
     }
   }
 
@@ -281,13 +281,13 @@ export function MembersTab() {
   return (
     <section className="animate-in fade-in-50 space-y-6 duration-200">
       <SettingsPanelHead
-        title="Team members"
-        description="People with access to this account. Roles control what each teammate can do."
+        title="Membros da equipe"
+        description="Pessoas com acesso a esta conta. Funções controlam o que cada membro pode fazer."
         action={
           <RequireRole min="admin">
             <Button onClick={() => setInviteOpen(true)}>
               <Plus className="size-4" />
-              Invite member
+              Convidar membro
             </Button>
           </RequireRole>
         }

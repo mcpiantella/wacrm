@@ -115,13 +115,13 @@ export function SdrConfigCard({ broadcastId }: { broadcastId: string }) {
       });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) {
-        toast.error(payload.error || 'Failed to save SDR config');
+        toast.error(payload.error || 'Falha ao salvar configuração SDR');
         return;
       }
-      toast.success('SDR configuration saved');
+      toast.success('Configuração SDR salva');
     } catch (err) {
       console.error('[SdrConfigCard] save', err);
-      toast.error('Could not reach the server');
+      toast.error('Não foi possível alcançar o servidor');
     } finally {
       setSaving(false);
     }
@@ -147,7 +147,7 @@ export function SdrConfigCard({ broadcastId }: { broadcastId: string }) {
           </div>
           <div className="flex items-center gap-2">
             <Label htmlFor="sdr-enabled" className="text-muted-foreground text-xs">
-              {config.enabled ? 'On' : 'Off'}
+              {config.enabled ? 'Ativado' : 'Desativado'}
             </Label>
             <Switch
               id="sdr-enabled"
@@ -157,8 +157,8 @@ export function SdrConfigCard({ broadcastId }: { broadcastId: string }) {
           </div>
         </div>
         <p className="text-muted-foreground text-xs">
-          When enabled, replies to this campaign are answered by the AI SDR until
-          a handoff. Activate it per conversation in the inbox.
+          Quando ativado, respostas a esta campanha são respondidas pelo AI SDR até
+          o handoff. Ative por conversa na caixa de entrada.
         </p>
 
         {/* AI generator — admins describe the campaign and the model drafts
@@ -212,7 +212,7 @@ export function SdrConfigCard({ broadcastId }: { broadcastId: string }) {
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor="sdr-criteria">Qualification criteria (one per line)</Label>
+          <Label htmlFor="sdr-criteria">Critérios de qualificação (um por linha)</Label>
           <Textarea
             id="sdr-criteria"
             rows={3}
@@ -232,7 +232,7 @@ export function SdrConfigCard({ broadcastId }: { broadcastId: string }) {
 
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-1.5">
-            <Label htmlFor="sdr-keywords">Handoff keywords (comma-separated)</Label>
+            <Label htmlFor="sdr-keywords">Palavras-chave de handoff (separadas por vírgula)</Label>
             <Input
               id="sdr-keywords"
               placeholder="falar com humano, atendente"
@@ -263,7 +263,7 @@ export function SdrConfigCard({ broadcastId }: { broadcastId: string }) {
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="sdr-turns">Max turns</Label>
+              <Label htmlFor="sdr-turns">Máx. de turnos</Label>
               <Input
                 id="sdr-turns"
                 type="number"
@@ -313,7 +313,7 @@ export function SdrConfigCard({ broadcastId }: { broadcastId: string }) {
           <div className="flex justify-end">
             <Button onClick={save} disabled={saving}>
               {saving && <Loader2 className="size-4 animate-spin" />}
-              Save SDR config
+              Salvar configuração SDR
             </Button>
           </div>
         </RequireRole>

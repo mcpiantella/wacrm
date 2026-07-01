@@ -60,7 +60,7 @@ export function EditorHeader() {
           className="inline-flex items-center gap-1 hover:text-foreground"
         >
           <ArrowLeft className="h-3 w-3" />
-          Flows
+          Fluxos
         </button>
       </div>
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -71,18 +71,18 @@ export function EditorHeader() {
             onChange={(e) =>
               setState((s) => ({ ...s, name: e.target.value }))
             }
-            placeholder="Flow name"
+            placeholder="Nome do fluxo"
             className="max-w-md bg-card text-lg font-semibold"
           />
           <StatusBadge status={state.status} />
           {dirty && (
             <span
               className="inline-flex shrink-0 items-center gap-1 text-[10px] font-medium uppercase tracking-wide text-amber-300"
-              title="Unsaved changes — hit Save to persist"
+              title="Alterações não salvas — pressione Salvar para persistir"
               aria-live="polite"
             >
               <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
-              Edited
+              Editado
             </span>
           )}
         </div>
@@ -93,7 +93,7 @@ export function EditorHeader() {
             onClick={() => router.push(`/flows/${flow.id}/runs`)}
           >
             <History className="h-3.5 w-3.5" />
-            Runs
+            Execuções
           </Button>
           <Button
             variant="ghost"
@@ -102,7 +102,7 @@ export function EditorHeader() {
             className="text-red-400 hover:bg-red-500/10 hover:text-red-300"
           >
             <Trash2 className="h-3.5 w-3.5" />
-            Delete
+            Excluir
           </Button>
           {state.status === "active" ? (
             <Button
@@ -116,7 +116,7 @@ export function EditorHeader() {
               ) : (
                 <PauseCircle className="h-3.5 w-3.5" />
               )}
-              Pause
+              Pausar
             </Button>
           ) : (
             <Button
@@ -126,7 +126,7 @@ export function EditorHeader() {
               disabled={activating || !canActivate}
               title={
                 !canActivate
-                  ? "Fix the issues below before activating"
+                  ? "Corrija os problemas abaixo antes de ativar"
                   : undefined
               }
             >
@@ -135,7 +135,7 @@ export function EditorHeader() {
               ) : (
                 <PlayCircle className="h-3.5 w-3.5" />
               )}
-              Activate
+              Ativar
             </Button>
           )}
           <Button onClick={() => void save()} disabled={saving} size="sm">
@@ -144,7 +144,7 @@ export function EditorHeader() {
             ) : (
               <Save className="h-3.5 w-3.5" />
             )}
-            Save
+            Salvar
           </Button>
         </div>
       </div>
@@ -153,7 +153,7 @@ export function EditorHeader() {
         onChange={(e) =>
           setState((s) => ({ ...s, description: e.target.value }))
         }
-        placeholder="Optional description (internal — customers don't see this)"
+        placeholder="Descrição opcional (interna — clientes não veem isso)"
         className="bg-card text-sm"
       />
     </div>
@@ -166,9 +166,10 @@ function StatusBadge({ status }: { status: BuilderState["status"] }) {
     active: "border-emerald-600/40 bg-emerald-500/10 text-emerald-300",
     archived: "border-border bg-muted/50 text-muted-foreground",
   }[status];
+  const label = { draft: "Rascunho", active: "Ativo", archived: "Arquivado" }[status];
   return (
     <Badge variant="outline" className={cn("shrink-0", cls)}>
-      {status.charAt(0).toUpperCase() + status.slice(1)}
+      {label}
     </Badge>
   );
 }

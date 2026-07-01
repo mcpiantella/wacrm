@@ -123,14 +123,14 @@ export function ContactForm({
     e.preventDefault();
 
     if (!phone.trim()) {
-      toast.error('Phone number is required');
+      toast.error('Número de telefone é obrigatório');
       return;
     }
 
     // Hard-block an exact duplicate on create (the DB unique index is
     // the real backstop; this avoids a round-trip + a raw error toast).
     if (!isEdit && dupMatch?.exact) {
-      toast.error('A contact with this phone number already exists');
+      toast.error('Já existe um contato com este número de telefone');
       return;
     }
 
@@ -194,7 +194,7 @@ export function ContactForm({
         }
       }
 
-      toast.success(isEdit ? 'Contact updated' : 'Contact created');
+      toast.success(isEdit ? 'Contato atualizado' : 'Contato criado');
       onOpenChange(false);
       onSaved();
     } catch (err: unknown) {
@@ -203,7 +203,7 @@ export function ContactForm({
       // normalizes equal). Surface it as the friendly duplicate notice
       // and, for new contacts, point the user at the existing record.
       if (isUniqueViolation(err)) {
-        toast.error('A contact with this phone number already exists');
+        toast.error('Já existe um contato com este número de telefone');
         if (!isEdit && accountId) {
           const existing = await findExistingContact(
             supabase,
@@ -222,7 +222,7 @@ export function ContactForm({
         toast.error('Limite de contatos do seu plano atingido. Faça upgrade para adicionar mais.');
         return;
       }
-      const message = raw || 'Failed to save contact';
+      const message = raw || 'Falha ao salvar contato';
       toast.error(message);
     } finally {
       setSaving(false);
@@ -234,19 +234,19 @@ export function ContactForm({
       <DialogContent className="bg-popover border-border text-popover-foreground sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="text-popover-foreground">
-            {isEdit ? 'Edit Contact' : 'Add Contact'}
+            {isEdit ? 'Editar Contato' : 'Adicionar Contato'}
           </DialogTitle>
           <DialogDescription className="text-muted-foreground">
             {isEdit
-              ? 'Update the contact details below.'
-              : 'Fill in the details to create a new contact.'}
+              ? 'Atualize os dados do contato abaixo.'
+              : 'Preencha os dados para criar um novo contato.'}
           </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="cf-name" className="text-muted-foreground">
-              Name
+              Nome
             </Label>
             <Input
               id="cf-name"
@@ -259,7 +259,7 @@ export function ContactForm({
 
           <div className="space-y-2">
             <Label htmlFor="cf-phone" className="text-muted-foreground">
-              Phone <span className="text-red-400">*</span>
+              Telefone <span className="text-red-400">*</span>
             </Label>
             <Input
               id="cf-phone"
@@ -284,8 +284,8 @@ export function ContactForm({
                 <div className="space-y-1">
                   <p>
                     {dupMatch.exact
-                      ? 'A contact with this phone number already exists.'
-                      : 'A contact with a very similar number already exists.'}
+                      ? 'Já existe um contato com este número de telefone.'
+                      : 'Já existe um contato com um número muito semelhante.'}
                   </p>
                   {onViewExisting && (
                     <button
@@ -293,21 +293,21 @@ export function ContactForm({
                       onClick={() => onViewExisting(dupMatch.contact.id)}
                       className="font-medium underline underline-offset-2 hover:no-underline"
                     >
-                      View {dupMatch.contact.name || dupMatch.contact.phone}
+                      Ver {dupMatch.contact.name || dupMatch.contact.phone}
                     </button>
                   )}
                 </div>
               </div>
             ) : (
               <p className="text-xs text-muted-foreground">
-                Include country code, e.g. +1 for US
+                Inclua o código do país, ex.: +55 para Brasil
               </p>
             )}
           </div>
 
           <div className="space-y-2">
             <Label htmlFor="cf-email" className="text-muted-foreground">
-              Email
+              E-mail
             </Label>
             <Input
               id="cf-email"
@@ -321,7 +321,7 @@ export function ContactForm({
 
           <div className="space-y-2">
             <Label htmlFor="cf-company" className="text-muted-foreground">
-              Company
+              Empresa
             </Label>
             <Input
               id="cf-company"
@@ -337,11 +337,11 @@ export function ContactForm({
             {loadingTags ? (
               <div className="flex items-center gap-2 text-muted-foreground text-sm">
                 <Loader2 className="size-3 animate-spin" />
-                Loading tags...
+                Carregando tags...
               </div>
             ) : tags.length === 0 ? (
               <p className="text-xs text-muted-foreground">
-                No tags available. Create tags in Settings.
+                Nenhuma tag disponível. Crie nas Configurações.
               </p>
             ) : (
               <div className="flex flex-wrap gap-1.5">
@@ -378,7 +378,7 @@ export function ContactForm({
               onClick={() => onOpenChange(false)}
               className="border-border text-muted-foreground hover:bg-muted"
             >
-              Cancel
+              Cancelar
             </Button>
             <Button
               type="submit"
@@ -386,7 +386,7 @@ export function ContactForm({
               className="bg-primary hover:bg-primary/90 text-primary-foreground"
             >
               {saving && <Loader2 className="size-4 animate-spin" />}
-              {isEdit ? 'Update' : 'Create'}
+              {isEdit ? 'Atualizar' : 'Criar'}
             </Button>
           </DialogFooter>
         </form>

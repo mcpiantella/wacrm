@@ -50,14 +50,14 @@ export function MessageActions({
   const handleCopy = async () => {
     const text = message.content_text ?? "";
     if (!text) {
-      toast.error("Nothing to copy");
+      toast.error("Nada para copiar");
       return;
     }
     try {
       await navigator.clipboard.writeText(text);
-      toast.success("Copied");
+      toast.success("Copiado");
     } catch {
-      toast.error("Copy failed");
+      toast.error("Falha ao copiar");
     }
     setTouchOpen(false);
   };
@@ -104,7 +104,7 @@ export function MessageActions({
         <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
           <PopoverTrigger
             className="flex h-5 w-5 items-center justify-center rounded-full text-popover-foreground hover:bg-muted hover:text-foreground"
-            aria-label="React"
+            aria-label="Reagir"
           >
             <SmilePlus className="h-3.5 w-3.5" />
           </PopoverTrigger>
@@ -118,7 +118,7 @@ export function MessageActions({
                 type="button"
                 onClick={() => handlePickEmoji(e)}
                 className="flex h-8 w-8 items-center justify-center rounded-full text-lg leading-none transition-transform hover:scale-125 hover:bg-muted"
-                aria-label={`React with ${e}`}
+                aria-label={`Reagir com ${e}`}
               >
                 {e}
               </button>
@@ -129,7 +129,7 @@ export function MessageActions({
           type="button"
           onClick={handleReply}
           className="flex h-5 w-5 items-center justify-center rounded-full text-popover-foreground hover:bg-muted hover:text-foreground"
-          aria-label="Reply"
+          aria-label="Responder"
         >
           <CornerUpLeft className="h-3.5 w-3.5" />
         </button>
@@ -137,7 +137,7 @@ export function MessageActions({
           type="button"
           onClick={handleCopy}
           className="flex h-5 w-5 items-center justify-center rounded-full text-popover-foreground hover:bg-muted hover:text-foreground"
-          aria-label="Copy"
+          aria-label="Copiar"
         >
           <Copy className="h-3.5 w-3.5" />
         </button>

@@ -142,9 +142,9 @@ function groupMessagesByDate(messages: Message[]) {
 }
 
 const STATUS_OPTIONS: { label: string; value: ConversationStatus; color: string }[] = [
-  { label: "Open", value: "open", color: "text-primary" },
-  { label: "Pending", value: "pending", color: "text-amber-400" },
-  { label: "Closed", value: "closed", color: "text-muted-foreground" },
+  { label: "Aberto", value: "open", color: "text-primary" },
+  { label: "Pendente", value: "pending", color: "text-amber-400" },
+  { label: "Fechado", value: "closed", color: "text-muted-foreground" },
 ];
 
 /**
