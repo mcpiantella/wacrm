@@ -11,7 +11,7 @@ export async function POST(
   const {
     data: { user },
   } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
 
   const admin = supabaseAdmin()
   const { data: original, error: origErr } = await admin
@@ -21,7 +21,7 @@ export async function POST(
     .eq('user_id', user.id)
     .maybeSingle()
   if (origErr) return NextResponse.json({ error: origErr.message }, { status: 500 })
-  if (!original) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  if (!original) return NextResponse.json({ error: 'Não encontrado' }, { status: 404 })
 
   const { data: copy, error: copyErr } = await admin
     .from('automations')

@@ -60,7 +60,7 @@ export async function GET() {
 
     if (error) {
       console.error('[channels GET] query error:', error)
-      return NextResponse.json({ error: 'Failed to load channels' }, { status: 500 })
+      return NextResponse.json({ error: 'Falha ao carregar canais' }, { status: 500 })
     }
     return NextResponse.json({ channels: (data ?? []).map(toDTO) })
   } catch (err) {
@@ -75,7 +75,7 @@ export async function POST(request: Request) {
 
     const body = await request.json().catch(() => null)
     if (!body || typeof body !== 'object') {
-      return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
+      return NextResponse.json({ error: 'Corpo da requisição inválido' }, { status: 400 })
     }
 
     const provider = (body as { provider?: unknown }).provider
@@ -96,16 +96,16 @@ export async function POST(request: Request) {
     const phoneE164 = str((body as Record<string, unknown>).phone_e164)
 
     if (!instance) {
-      return NextResponse.json({ error: 'Instance name is required.' }, { status: 400 })
+      return NextResponse.json({ error: 'Nome da instância é obrigatório.' }, { status: 400 })
     }
     if (!baseUrlRaw || !/^https?:\/\//i.test(baseUrlRaw)) {
       return NextResponse.json(
-        { error: 'A valid base URL (http/https) is required.' },
+        { error: 'Uma URL base válida (http/https) é obrigatória.' },
         { status: 400 },
       )
     }
     if (!apiKey) {
-      return NextResponse.json({ error: 'API key is required.' }, { status: 400 })
+      return NextResponse.json({ error: 'Chave de API é obrigatória.' }, { status: 400 })
     }
 
     const baseUrl = baseUrlRaw.replace(/\/+$/, '')
@@ -120,11 +120,11 @@ export async function POST(request: Request) {
       .maybeSingle()
     if (claimedErr) {
       console.error('[channels POST] claim check error:', claimedErr)
-      return NextResponse.json({ error: 'Failed to validate channel' }, { status: 500 })
+      return NextResponse.json({ error: 'Falha ao validar canal' }, { status: 500 })
     }
     if (claimed && claimed.account_id !== accountId) {
       return NextResponse.json(
-        { error: 'This Evolution instance is already linked to another account.' },
+        { error: 'Esta instância Evolution já está vinculada a outra conta.' },
         { status: 409 },
       )
     }
@@ -150,7 +150,7 @@ export async function POST(request: Request) {
         .single()
       if (error) {
         console.error('[channels POST] update error:', error)
-        return NextResponse.json({ error: 'Failed to save channel' }, { status: 500 })
+        return NextResponse.json({ error: 'Falha ao salvar canal' }, { status: 500 })
       }
       saved = data
     } else {
@@ -184,7 +184,7 @@ export async function POST(request: Request) {
         .single()
       if (error) {
         console.error('[channels POST] insert error:', error)
-        return NextResponse.json({ error: 'Failed to save channel' }, { status: 500 })
+        return NextResponse.json({ error: 'Falha ao salvar canal' }, { status: 500 })
       }
       saved = data
     }

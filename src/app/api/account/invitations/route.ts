@@ -153,7 +153,7 @@ export async function GET() {
     if (error) {
       console.error("[GET /api/account/invitations] fetch error:", error);
       return NextResponse.json(
-        { error: "Failed to load invitations" },
+        { error: "Falha ao carregar convites" },
         { status: 500 },
       );
     }
@@ -232,7 +232,7 @@ export async function POST(request: Request) {
     if (error || !data) {
       console.error("[POST /api/account/invitations] insert error:", error);
       return NextResponse.json(
-        { error: "Failed to create invitation" },
+        { error: "Falha ao criar convite" },
         { status: 500 },
       );
     }

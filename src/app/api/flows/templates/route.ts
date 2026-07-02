@@ -18,7 +18,7 @@ export async function GET() {
     data: { user },
   } = await supabase.auth.getUser()
   if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
   }
   // Shallow shape so the client gallery doesn't have to know about
   // the full node tree.

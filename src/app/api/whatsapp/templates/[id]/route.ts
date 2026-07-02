@@ -53,7 +53,7 @@ export async function PATCH(
     const { id } = await context.params
     if (!UUID_RE.test(id)) {
       return NextResponse.json(
-        { error: 'Invalid template id.' },
+        { error: 'ID de template inválido.' },
         { status: 400 },
       )
     }
@@ -63,7 +63,7 @@ export async function PATCH(
       error: authError,
     } = await supabase.auth.getUser()
     if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
     }
 
     // Resolve the caller's account_id so template + whatsapp_config
@@ -76,7 +76,7 @@ export async function PATCH(
     const accountId = profile?.account_id as string | undefined
     if (!accountId) {
       return NextResponse.json(
-        { error: 'Your profile is not linked to an account.' },
+        { error: 'Seu perfil não está vinculado a uma conta.' },
         { status: 403 },
       )
     }
@@ -85,7 +85,7 @@ export async function PATCH(
     try {
       payload = (await request.json()) as TemplatePayload
     } catch {
-      return NextResponse.json({ error: 'Invalid JSON body.' }, { status: 400 })
+      return NextResponse.json({ error: 'Corpo JSON inválido.' }, { status: 400 })
     }
 
     // RLS handles ownership, but we need the existing row to read
@@ -97,7 +97,7 @@ export async function PATCH(
       .eq('account_id', accountId)
       .maybeSingle()
     if (lookupErr || !existing) {
-      return NextResponse.json({ error: 'Template not found.' }, { status: 404 })
+      return NextResponse.json({ error: 'Template não encontrado.' }, { status: 404 })
     }
 
     if (!existing.meta_template_id) {
@@ -145,7 +145,7 @@ export async function PATCH(
       )
       if (configError || !config) {
         return NextResponse.json(
-          { error: 'WhatsApp not configured.' },
+          { error: 'WhatsApp não configurado.' },
           { status: 400 },
         )
       }
@@ -238,7 +238,7 @@ export async function DELETE(
     const { id } = await context.params
     if (!UUID_RE.test(id)) {
       return NextResponse.json(
-        { error: 'Invalid template id.' },
+        { error: 'ID de template inválido.' },
         { status: 400 },
       )
     }
@@ -248,7 +248,7 @@ export async function DELETE(
       error: authError,
     } = await supabase.auth.getUser()
     if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
     }
 
     // Same account-scoping rationale as the PATCH handler above —
@@ -262,7 +262,7 @@ export async function DELETE(
     const accountId = profile?.account_id as string | undefined
     if (!accountId) {
       return NextResponse.json(
-        { error: 'Your profile is not linked to an account.' },
+        { error: 'Seu perfil não está vinculado a uma conta.' },
         { status: 403 },
       )
     }
@@ -274,7 +274,7 @@ export async function DELETE(
       .eq('account_id', accountId)
       .maybeSingle()
     if (lookupErr || !existing) {
-      return NextResponse.json({ error: 'Template not found.' }, { status: 404 })
+      return NextResponse.json({ error: 'Template não encontrado.' }, { status: 404 })
     }
 
     if (existing.meta_template_id && !isDryRun()) {
@@ -284,7 +284,7 @@ export async function DELETE(
       )
       if (configError || !config || !config.waba_id) {
         return NextResponse.json(
-          { error: 'WhatsApp not configured — cannot delete on Meta.' },
+          { error: 'WhatsApp não configurado — não é possível excluir na Meta.' },
           { status: 400 },
         )
       }

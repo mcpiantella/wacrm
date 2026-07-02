@@ -39,7 +39,7 @@ export async function POST(request: Request) {
           .map((h) => h.slice(0, MAX_CELL_CHARS))
       : []
     if (headers.length === 0) {
-      return NextResponse.json({ error: 'headers is required' }, { status: 400 })
+      return NextResponse.json({ error: 'headers é obrigatório' }, { status: 400 })
     }
     const sample = Array.isArray(body.sample)
       ? body.sample

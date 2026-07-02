@@ -35,7 +35,7 @@ export async function POST(request: Request) {
 
     if (authError || !user) {
       return NextResponse.json(
-        { error: 'Unauthorized' },
+        { error: 'Não autorizado' },
         { status: 401 }
       )
     }
@@ -59,7 +59,7 @@ export async function POST(request: Request) {
     const accountId = profile?.account_id as string | undefined
     if (!accountId) {
       return NextResponse.json(
-        { error: 'Your profile is not linked to an account.' },
+        { error: 'Seu perfil não está vinculado a uma conta.' },
         { status: 403 },
       )
     }
@@ -84,7 +84,7 @@ export async function POST(request: Request) {
 
     if (!conversation_id || !message_type) {
       return NextResponse.json(
-        { error: 'conversation_id and message_type are required' },
+        { error: 'conversation_id e message_type são obrigatórios' },
         { status: 400 }
       )
     }
@@ -106,14 +106,14 @@ export async function POST(request: Request) {
 
     if (message_type === 'text' && !content_text) {
       return NextResponse.json(
-        { error: 'content_text is required for text messages' },
+        { error: 'content_text é obrigatório para mensagens de texto' },
         { status: 400 }
       )
     }
 
     if (message_type === 'template' && !template_name) {
       return NextResponse.json(
-        { error: 'template_name is required for template messages' },
+        { error: 'template_name é obrigatório para mensagens de template' },
         { status: 400 }
       )
     }
@@ -134,7 +134,7 @@ export async function POST(request: Request) {
       content_text.length > 1024
     ) {
       return NextResponse.json(
-        { error: 'Caption exceeds the 1024-character limit' },
+        { error: 'A legenda excede o limite de 1024 caracteres' },
         { status: 400 }
       )
     }
@@ -149,7 +149,7 @@ export async function POST(request: Request) {
 
     if (convError || !conversation) {
       return NextResponse.json(
-        { error: 'Conversation not found' },
+        { error: 'Conversa não encontrada' },
         { status: 404 }
       )
     }
@@ -157,7 +157,7 @@ export async function POST(request: Request) {
     const contact = conversation.contact
     if (!contact?.phone) {
       return NextResponse.json(
-        { error: 'Contact phone number not found' },
+        { error: 'Número de telefone do contato não encontrado' },
         { status: 400 }
       )
     }
@@ -166,7 +166,7 @@ export async function POST(request: Request) {
     const sanitizedPhone = sanitizePhoneForMeta(contact.phone)
     if (!isValidE164(sanitizedPhone)) {
       return NextResponse.json(
-        { error: 'Invalid phone number format' },
+        { error: 'Formato de número de telefone inválido' },
         { status: 400 }
       )
     }
@@ -180,7 +180,7 @@ export async function POST(request: Request) {
 
     if (configError || !config) {
       return NextResponse.json(
-        { error: 'WhatsApp not configured. Please set up your WhatsApp integration first.' },
+        { error: 'WhatsApp não configurado. Configure sua integração do WhatsApp primeiro.' },
         { status: 400 }
       )
     }
@@ -206,7 +206,7 @@ export async function POST(request: Request) {
 
       if (parentError || !parent) {
         return NextResponse.json(
-          { error: 'reply_to_message_id not found in this conversation' },
+          { error: 'reply_to_message_id não encontrado nesta conversa' },
           { status: 400 }
         )
       }
@@ -427,7 +427,7 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error('Error in WhatsApp send POST:', error)
     return NextResponse.json(
-      { error: 'Failed to send message' },
+      { error: 'Falha ao enviar mensagem' },
       { status: 500 }
     )
   }
