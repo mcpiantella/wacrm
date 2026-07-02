@@ -25,7 +25,7 @@ export async function GET(request: Request) {
     const { supabase, accountId } = await getCurrentAccount()
     const broadcastId = new URL(request.url).searchParams.get('broadcast_id')
     if (!broadcastId) {
-      return NextResponse.json({ error: 'broadcast_id is required' }, { status: 400 })
+      return NextResponse.json({ error: 'broadcast_id é obrigatório' }, { status: 400 })
     }
     const { data, error } = await supabase
       .from('sdr_configs')
@@ -35,7 +35,7 @@ export async function GET(request: Request) {
       .maybeSingle()
     if (error) {
       console.error('[sdr/config GET]', error)
-      return NextResponse.json({ error: 'Failed to load SDR config' }, { status: 500 })
+      return NextResponse.json({ error: 'Falha ao carregar configuração do SDR' }, { status: 500 })
     }
     return NextResponse.json({ config: data ?? null })
   } catch (err) {
@@ -48,12 +48,12 @@ export async function PUT(request: Request) {
     const { supabase, accountId } = await requireRole('admin')
     const body = await request.json().catch(() => null)
     if (!body || typeof body !== 'object') {
-      return NextResponse.json({ error: 'Invalid body' }, { status: 400 })
+      return NextResponse.json({ error: 'Corpo inválido' }, { status: 400 })
     }
     const b = body as Record<string, unknown>
     const broadcastId = typeof b.broadcast_id === 'string' ? b.broadcast_id : null
     if (!broadcastId) {
-      return NextResponse.json({ error: 'broadcast_id is required' }, { status: 400 })
+      return NextResponse.json({ error: 'broadcast_id é obrigatório' }, { status: 400 })
     }
 
     // The broadcast must belong to the caller's account.
@@ -64,7 +64,7 @@ export async function PUT(request: Request) {
       .eq('account_id', accountId)
       .maybeSingle()
     if (!bc) {
-      return NextResponse.json({ error: 'Broadcast not found' }, { status: 404 })
+      return NextResponse.json({ error: 'Transmissão não encontrada' }, { status: 404 })
     }
 
     const debounce = clampInt(b.debounce_seconds, 12, 5, 60)
@@ -119,7 +119,7 @@ export async function PUT(request: Request) {
       .single()
     if (error) {
       console.error('[sdr/config PUT]', error)
-      return NextResponse.json({ error: 'Failed to save SDR config' }, { status: 500 })
+      return NextResponse.json({ error: 'Falha ao salvar configuração do SDR' }, { status: 500 })
     }
     return NextResponse.json({ config: data })
   } catch (err) {

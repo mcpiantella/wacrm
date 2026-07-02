@@ -52,14 +52,14 @@ export async function DELETE(
     if (error) {
       console.error('[DELETE /api/account/api-keys/[id]] error:', error);
       return NextResponse.json(
-        { error: 'Failed to revoke API key' },
+        { error: 'Falha ao revogar chave de API' },
         { status: 500 }
       );
     }
     if (!data) {
       // Either no such key in this account, or it was already revoked.
       return NextResponse.json(
-        { error: 'API key not found or already revoked' },
+        { error: 'Chave de API não encontrada ou já revogada' },
         { status: 404 }
       );
     }

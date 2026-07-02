@@ -70,7 +70,7 @@ export async function POST(request: Request) {
     } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
     }
 
     // Per-user broadcast budget. Note: this limits how often a user
@@ -93,7 +93,7 @@ export async function POST(request: Request) {
     const accountId = profile?.account_id as string | undefined
     if (!accountId) {
       return NextResponse.json(
-        { error: 'Your profile is not linked to an account.' },
+        { error: 'Seu perfil não está vinculado a uma conta.' },
         { status: 403 },
       )
     }
@@ -135,7 +135,7 @@ export async function POST(request: Request) {
 
     if (!template_name) {
       return NextResponse.json(
-        { error: 'template_name is required' },
+        { error: 'template_name é obrigatório' },
         { status: 400 }
       )
     }
@@ -149,7 +149,7 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           error:
-            'WhatsApp not configured. Please set up your WhatsApp integration first.',
+            'WhatsApp não configurado. Configure sua integração do WhatsApp primeiro.',
         },
         { status: 400 }
       )
@@ -191,7 +191,7 @@ export async function POST(request: Request) {
         results.push({
           phone: recipient.phone,
           status: 'failed',
-          error: 'Invalid phone number format',
+          error: 'Formato de número de telefone inválido',
         })
         failedCount++
         continue
@@ -261,7 +261,7 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error('Error in WhatsApp broadcast POST:', error)
     return NextResponse.json(
-      { error: 'Failed to process broadcast' },
+      { error: 'Falha ao processar transmissão' },
       { status: 500 }
     )
   }

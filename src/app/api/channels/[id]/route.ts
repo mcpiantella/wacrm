@@ -27,10 +27,10 @@ export async function DELETE(
 
     if (error) {
       console.error('[channels DELETE] error:', error)
-      return NextResponse.json({ error: 'Failed to delete channel' }, { status: 500 })
+      return NextResponse.json({ error: 'Falha ao excluir canal' }, { status: 500 })
     }
     if (!data) {
-      return NextResponse.json({ error: 'Channel not found' }, { status: 404 })
+      return NextResponse.json({ error: 'Canal não encontrado' }, { status: 404 })
     }
     return NextResponse.json({ success: true })
   } catch (err) {

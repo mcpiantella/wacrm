@@ -27,7 +27,7 @@ export async function PATCH(
     const status = body.sdr_status
     if (typeof status !== 'string' || !VALID.has(status)) {
       return NextResponse.json(
-        { error: "sdr_status must be one of 'off', 'active', 'handoff'" },
+        { error: "sdr_status deve ser um dos seguintes: 'off', 'active', 'handoff'" },
         { status: 400 },
       )
     }
@@ -42,7 +42,7 @@ export async function PATCH(
       const broadcastId = typeof body.broadcast_id === 'string' ? body.broadcast_id : null
       if (!broadcastId) {
         return NextResponse.json(
-          { error: 'broadcast_id is required to activate the SDR' },
+          { error: 'broadcast_id é obrigatório para ativar o SDR' },
           { status: 400 },
         )
       }
@@ -59,10 +59,10 @@ export async function PATCH(
 
     if (error) {
       console.error('[sdr/conversation PATCH]', error)
-      return NextResponse.json({ error: 'Failed to update conversation' }, { status: 500 })
+      return NextResponse.json({ error: 'Falha ao atualizar conversa' }, { status: 500 })
     }
     if (!data) {
-      return NextResponse.json({ error: 'Conversation not found' }, { status: 404 })
+      return NextResponse.json({ error: 'Conversa não encontrada' }, { status: 404 })
     }
     return NextResponse.json({ conversation: data })
   } catch (err) {

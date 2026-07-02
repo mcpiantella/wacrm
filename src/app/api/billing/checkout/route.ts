@@ -12,7 +12,7 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => null)
     const planId = body && typeof body === 'object' ? (body as { planId?: unknown }).planId : undefined
     if (typeof planId !== 'string' || !planId) {
-      return NextResponse.json({ error: 'planId is required' }, { status: 400 })
+      return NextResponse.json({ error: 'planId é obrigatório' }, { status: 400 })
     }
     const origin = new URL(request.url).origin
     const { checkoutUrl } = await startCheckout({
