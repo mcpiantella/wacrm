@@ -464,7 +464,7 @@ export function WhatsAppConfig() {
                   }
                 >
                   {isRegistered
-                    ? 'Registrado — Meta enviará eventos para o wacrm'
+                    ? 'Registrado — Meta enviará eventos para o Zenith Sender'
                     : 'Não registrado — Meta não enviará eventos'}
                 </AlertTitle>
               </div>
@@ -644,7 +644,7 @@ export function WhatsAppConfig() {
                   Meta Business Manager → WhatsApp Accounts → Phone
                   Numbers → Two-step verification
                 </strong>
-                , then paste it here so wacrm can subscribe the number —
+                , then paste it here so Zenith Sender can subscribe the number —
                 otherwise Meta routes inbound events to whichever app
                 last claimed it (the symptom that hits second numbers
                 under a shared WABA).{' '}

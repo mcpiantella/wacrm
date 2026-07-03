@@ -1,5 +1,5 @@
 /**
- * WhatsApp channel abstraction (S5 of the wacrm↔Zenith merge).
+ * WhatsApp channel abstraction.
  *
  * A "channel" is one WhatsApp number an account can send from. Two
  * providers exist side by side (see migration 028_channels):

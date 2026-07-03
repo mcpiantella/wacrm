@@ -140,7 +140,7 @@ export function InviteMemberDialog({
         // string if `account` hasn't loaded yet (shouldn't happen
         // — the dialog requires admin+ which requires a loaded
         // profile — but stay safe).
-        accountName: account?.name ?? 'nossa conta wacrm',
+        accountName: account?.name ?? 'nossa conta no Zenith Sender',
       });
       onCreated();
     } catch (err) {
@@ -167,10 +167,10 @@ export function InviteMemberDialog({
   function whatsappShareUrl(url: string): string {
     // Include the account name so the recipient knows which team
     // they're being invited to before clicking through. This matters
-    // for users in multi-team contexts where "nossa conta wacrm"
-    // wouldn't be enough to disambiguate.
-    const accountName = result?.accountName ?? 'nossa conta wacrm';
-    const message = `Junte-se a ${accountName} no wacrm usando este link (válido por ${result?.expiresInDays} dia(s)): ${url}`;
+    // for users in multi-team contexts where "nossa conta no Zenith
+    // Sender" wouldn't be enough to disambiguate.
+    const accountName = result?.accountName ?? 'nossa conta no Zenith Sender';
+    const message = `Junte-se a ${accountName} no Zenith Sender usando este link (válido por ${result?.expiresInDays} dia(s)): ${url}`;
     return `https://wa.me/?text=${encodeURIComponent(message)}`;
   }
 
