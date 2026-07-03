@@ -1,7 +1,7 @@
 # Public API (`/api/v1`)
 
-The public API lets you drive your wacrm instance from your own
-scripts and automations — send messages, manage contacts, launch
+The public API lets you drive your Zenith Sender instance from your
+own scripts and automations — send messages, manage contacts, launch
 broadcasts — without going through the dashboard UI.
 
 > **Status:** groundwork release. Authentication, scopes, rate
@@ -15,7 +15,7 @@ Every request authenticates with an **API key**, sent as a bearer
 token:
 
 ```
-Authorization: Bearer wacrm_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+Authorization: Bearer zsender_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
 Keys are **account-scoped**: a key acts on exactly one account, the
@@ -28,9 +28,9 @@ In the dashboard: **Settings → API keys → New API key**. Only
 
 1. Give the key a name (after the integration that will use it).
 2. Grant the **scopes** it needs — nothing more (see below).
-3. Copy the key. **The full key is shown exactly once.** wacrm
-   stores only a SHA-256 hash, so it can never be shown again. If you
-   lose it, revoke it and create a new one.
+3. Copy the key. **The full key is shown exactly once.** Zenith
+   Sender stores only a SHA-256 hash, so it can never be shown again.
+   If you lose it, revoke it and create a new one.
 
 ### Revoking a key
 
@@ -103,7 +103,7 @@ and to discover its scopes.
 
 ```bash
 curl https://your-crm.example.com/api/v1/me \
-  -H "Authorization: Bearer wacrm_live_xxx"
+  -H "Authorization: Bearer zsender_live_xxx"
 ```
 
 ```json

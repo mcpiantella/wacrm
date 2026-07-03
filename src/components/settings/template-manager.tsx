@@ -1162,8 +1162,8 @@ export function TemplateManager() {
             <DialogTitle className="text-popover-foreground">Excluir template?</DialogTitle>
             <DialogDescription className="text-muted-foreground">
               {templateToDelete?.meta_template_id
-                ? `"${templateToDelete?.name}" será excluído do Meta e do wacrm. Disparos ativos usando este template começarão a falhar no próximo envio. Esta ação não pode ser desfeita.`
-                : `"${templateToDelete?.name}" será excluído do wacrm. Ele nunca foi enviado ao Meta, portanto não é necessária limpeza remota.`}
+                ? `"${templateToDelete?.name}" será excluído do Meta e do Zenith Sender. Disparos ativos usando este template começarão a falhar no próximo envio. Esta ação não pode ser desfeita.`
+                : `"${templateToDelete?.name}" será excluído do Zenith Sender. Ele nunca foi enviado ao Meta, portanto não é necessária limpeza remota.`}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="bg-popover border-border">

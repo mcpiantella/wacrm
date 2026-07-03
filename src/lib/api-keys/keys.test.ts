@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   API_KEY_PREFIX,
+  LEGACY_API_KEY_PREFIX,
   generateApiKey,
   hashApiKey,
   looksLikeApiKey,
@@ -35,11 +36,13 @@ describe('generateApiKey', () => {
 
 describe('hashApiKey', () => {
   it('is deterministic', () => {
-    expect(hashApiKey('wacrm_live_abc')).toBe(hashApiKey('wacrm_live_abc'));
+    expect(hashApiKey('zsender_live_abc')).toBe(hashApiKey('zsender_live_abc'));
   });
 
   it('differs for different inputs', () => {
-    expect(hashApiKey('wacrm_live_abc')).not.toBe(hashApiKey('wacrm_live_abd'));
+    expect(hashApiKey('zsender_live_abc')).not.toBe(
+      hashApiKey('zsender_live_abd'),
+    );
   });
 });
 
@@ -48,8 +51,13 @@ describe('looksLikeApiKey', () => {
     expect(looksLikeApiKey(generateApiKey().plaintext)).toBe(true);
   });
 
-  it('rejects the bare prefix, empty, and foreign tokens', () => {
+  it('accepts a legacy (pre-rebrand) key so old integrations keep working', () => {
+    expect(looksLikeApiKey(`${LEGACY_API_KEY_PREFIX}somebody`)).toBe(true);
+  });
+
+  it('rejects the bare prefixes, empty, and foreign tokens', () => {
     expect(looksLikeApiKey(API_KEY_PREFIX)).toBe(false);
+    expect(looksLikeApiKey(LEGACY_API_KEY_PREFIX)).toBe(false);
     expect(looksLikeApiKey('')).toBe(false);
     expect(looksLikeApiKey('some-invite-token')).toBe(false);
   });
@@ -57,7 +65,7 @@ describe('looksLikeApiKey', () => {
 
 describe('timingSafeHexEqual', () => {
   it('is true for identical digests', () => {
-    const h = hashApiKey('wacrm_live_xyz');
+    const h = hashApiKey('zsender_live_xyz');
     expect(timingSafeHexEqual(h, h)).toBe(true);
   });
 

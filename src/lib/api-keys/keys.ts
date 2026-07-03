@@ -12,17 +12,25 @@
 //   only slow the per-request auth lookup. A fast hash with a UNIQUE
 //   index is the correct, indexable choice for opaque secrets.
 //
-// Why the `wacrm_live_` prefix
+// Why the `zsender_live_` prefix
 //   - Self-identifying: a leaked string is instantly recognisable as
-//     a wacrm key (handy for secret-scanners like GitGuardian).
-//   - Forward-compatible: leaves room for a `wacrm_test_` variant if
+//     a Zenith Sender key (handy for secret-scanners like GitGuardian).
+//   - Forward-compatible: leaves room for a `zsender_test_` variant if
 //     a sandbox mode is ever added, without reshaping the format.
+//
+// LEGACY_API_KEY_PREFIX keeps any keys minted before the rebrand
+// (`wacrm_live_…`) authenticating — `looksLikeApiKey` accepts both, so
+// existing integrations don't break. New keys always use the current
+// prefix.
 // ============================================================
 
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 
 /** Secret prefix on every key. Part of the plaintext, not a secret. */
-export const API_KEY_PREFIX = 'wacrm_live_';
+export const API_KEY_PREFIX = 'zsender_live_';
+
+/** Pre-rebrand prefix, still accepted by `looksLikeApiKey` (see above). */
+export const LEGACY_API_KEY_PREFIX = 'wacrm_live_';
 
 /**
  * Length of the non-secret display prefix stored in `key_prefix` and
@@ -74,7 +82,10 @@ export function hashApiKey(plaintext: string): string {
  */
 export function looksLikeApiKey(value: string): boolean {
   return (
-    value.startsWith(API_KEY_PREFIX) && value.length > API_KEY_PREFIX.length
+    (value.startsWith(API_KEY_PREFIX) &&
+      value.length > API_KEY_PREFIX.length) ||
+    (value.startsWith(LEGACY_API_KEY_PREFIX) &&
+      value.length > LEGACY_API_KEY_PREFIX.length)
   );
 }
 
